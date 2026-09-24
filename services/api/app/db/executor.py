@@ -71,7 +71,11 @@ class QueryExecutor:
             settings.reader_url(EXEC_READER, settings.db_exec_reader_password), **common
         )
 
-    async def run(self, user: UserContext, sql: str) -> QueryResult:
+    async def run(
+        self, user: UserContext, sql: str, params: dict[str, Any] | None = None
+    ) -> QueryResult:
+        """Run `sql` as `user`. `params` is only for the pipeline's own lookup queries (bound
+        parameters); LLM-written SQL is always run without params."""
         engine = self._exec if user.scope is None else self._scoped
         async with engine.connect() as conn:
             try:
@@ -82,7 +86,10 @@ class QueryExecutor:
                         {"level": user.scope.level, "value": user.scope.value},
                     )
                 await conn.exec_driver_sql("SET LOCAL transaction_read_only = on")
-                result = await conn.exec_driver_sql(sql)
+                if params is None:
+                    result = await conn.exec_driver_sql(sql)
+                else:
+                    result = await conn.execute(text(sql), params)
                 if not result.returns_rows:
                     raise QueryFailed("statement returned no rows (only SELECT is allowed)")
                 rows = [tuple(r) for r in result.fetchmany(self._row_limit + 1)]
