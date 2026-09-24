@@ -52,9 +52,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.engine, settings.knowledge_docs_dir, settings.embed_cache_dir
         )
         if settings.demo_password:
-            written = await sync_demo_credentials(app.state.engine, settings.demo_password)
-            if written:
-                log.info("demo credentials set for %d users", written)
+            # Non-fatal, like the knowledge layer: if the database is briefly unreachable at boot
+            # (e.g. RDS still starting during a deploy), serve /health instead of crash-looping.
+            try:
+                written = await sync_demo_credentials(app.state.engine, settings.demo_password)
+                if written:
+                    log.info("demo credentials set for %d users", written)
+            except Exception:
+                log.exception("demo credential sync failed; logins may fail until restart")
         try:
             yield
         finally:

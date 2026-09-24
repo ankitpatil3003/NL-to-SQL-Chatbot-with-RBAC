@@ -4,8 +4,12 @@ from app.core.config import Settings
 from app.main import create_app
 
 # Nothing listens on port 1, so every connection attempt fails fast.
+# _env_file=None: unit tests must not depend on the developer's .env (keys, demo password).
 UNREACHABLE_DB = Settings(
-    database_url="postgresql+asyncpg://x:x@127.0.0.1:1/x", db_connect_timeout_s=1
+    _env_file=None,  # type: ignore[call-arg]
+    database_url="postgresql+asyncpg://x:x@127.0.0.1:1/x",
+    db_connect_timeout_s=1,
+    demo_password="set-so-startup-credential-sync-runs",
 )
 
 
