@@ -7,7 +7,8 @@ error the exact message goes back to the model as a follow-up turn (up to MAX_RE
 execution feedback is the cheapest accuracy boost available.
 """
 
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from app.db.executor import QueryExecutor, QueryFailed, QueryResult
@@ -24,6 +25,21 @@ from app.rbac.context import UserContext
 from app.sqlguard.guard import GuardedQuery, GuardViolation, guard
 
 MAX_REPAIRS = 2
+
+# SQL that uses the wac column: SUM(wac), s.wac, wac) ... Doc chunks are retrieved by similarity
+# and not role-aware (examples are filtered separately), so for users without WAC access these
+# lines are redacted: the model shouldn't be shown a pattern it isn't allowed to use. Prose about
+# WAC (e.g. "only Execs may see it") stays.
+WAC_SQL = re.compile(r"(\(\s*|\.)wac\b|\bwac\s*\)|\bwac\s*[<>=]", re.IGNORECASE)
+WAC_REDACTED = "[pricing formula omitted: not available at this user's access level]"
+
+
+def redact_wac_sql(docs: list[Hit]) -> list[Hit]:
+    def clean(text: str) -> str:
+        lines = text.splitlines()
+        return "\n".join(WAC_REDACTED if WAC_SQL.search(line) else line for line in lines)
+
+    return [replace(d, content=clean(d.content)) for d in docs]
 
 
 @dataclass(slots=True)
