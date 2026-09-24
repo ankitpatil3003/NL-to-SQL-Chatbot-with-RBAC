@@ -37,8 +37,12 @@ class Settings(BaseSettings):
     # --- LLM ---------------------------------------------------------------------------------
     # Comma-separated provider:model targets, tried in order (router.py). Per-task overrides:
     # LLM_CHAIN_SQL, LLM_CHAIN_ROUTER, LLM_CHAIN_REWRITE, LLM_CHAIN_ANSWER, LLM_CHAIN_TITLE.
+    # Free first; Claude only when both free models fail (free pools saturate upstream: on
+    # 2026-09-24 qwen3.8-27b:free returned 429 for minutes; see commit history).
     llm_chain: str = (
-        "openrouter:nvidia/nemotron-3-super-120b-a12b:free,openrouter:qwen/qwen3.8-27b:free"
+        "openrouter:nvidia/nemotron-3-super-120b-a12b:free,"
+        "openrouter:nex-agi/nex-n2.5-mini:free,"
+        "anthropic:claude-sonnet-5"
     )
     llm_chain_sql: str | None = None
     llm_chain_router: str | None = None
