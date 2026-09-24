@@ -42,6 +42,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 # Test fixtures embed realistic multi-clause SQL; wrapping it would hurt readability.
 "tests/**" = ["E501"]
+"evals/**" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
