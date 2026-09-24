@@ -1,0 +1,233 @@
+# Semantic contract: the business rules from docs/ compiled into a precise, versioned form.
+#
+# Always in the SQL-generation prompt (it is small and stable, so it caches). Retrieval over the raw
+# docs and the few-shot bank covers the long tail. Rule ids are stable: traces, evals and answers
+# can cite them. Every `sql` template here is executed by tests (tests/integration) so the contract
+# can't drift from the schema. Values that come from the data (product catalogue, territories,
+# regions, GPOs) are NOT listed here; they are injected from the database at startup.
+#
+# Sources: docs/metric_definitions.md, data_source_guide.md, period_offsets.md, org_hierarchy.md,
+# market_classification.md, security_model.md.
+
+version: 1
+
+data:
+  anchor: >-
+    Data is current through the week ending 2026-09-19. mo_offset 0 = September 2026 (a partial
+    month); wk_offset 0 = that week. There are ~3 years of history (mo_offset 0-35, wk_offset
+    0-155). Never use CURRENT_DATE/NOW().
+  dialect: PostgreSQL. Measures (pack_units, total_mg, wac, unit_conversion_factor) are DOUBLE PRECISION.
+
+tables:
+  sales:
+    grain: one transaction for one facility (org_id) x product (ndc) on one date, from one data source
+    columns:
+      org_id: facility; join organizations.org_id
+      ndc: product; join products.ndc
+      drug_name: UPPERCASE brand/product name, e.g. 'ZENOVAX', 'LUPREX DEPOT', 'DOCETAXEL GENERIC'
+      data_source: "'distributor' | 'hub_dispense' | 'market_data' (see rules DS-*)"
+      brand_flag: 1 = NovaPharma product, 0 = competitor/generic
+      pack_units: units sold (the default volume measure)
+      total_mg: milligrams
+      wac: dollar amount (wholesale acquisition cost); restricted, see SEC-1
+      period_wk: "'YYYY-WNN' label"
+      period_mo: "'YYYY-MM' label"
+      period_qtr: "'YYYY-QN' label"
+      wk_offset: 0 = current week, 1 = last week, ...
+      mo_offset: 0 = current month, 1 = last month, ...
+      transaction_date, week_ending_date: "TEXT 'YYYY-MM-DD'; prefer offsets and period labels"
+      state, specialty: denormalised from facility / product
+  organizations:
+    grain: one healthcare organization at any hierarchy level
+    columns:
+      org_id: key
+      org_name: name
+      org_type: "'Facility' | 'Parent' | 'Grandparent' (also 'GPO', 'Payer')"
+      org_status: "'Active' | 'Inactive'"
+      org_archetype: "'Hospital' | 'Clinic' | 'IDN' | 'Government' | 'Specialty Pharmacy'"
+      specialty: "'Oncology' | 'Urology' | 'Mixed'"
+      city, state: location
+      zip: joins zip_territory.zip (territory and region live there)
+      parent_org_id, parent_org_name: parent level; NULL for standalone facilities
+      grandparent_org_id, grandparent_org_name: top-level health system / IDN; NULL for standalone
+      gpo_name: primary Group Purchasing Organization
+      is_340b: 1 = 340B covered entity
+  products:
+    grain: one NDC (package/strength of a drug)
+    columns:
+      ndc: key
+      drug_name: UPPERCASE, matches sales.drug_name
+      generic_name: lowercase molecule, e.g. 'docetaxel'
+      strength, form: e.g. '80MG/4ML', 'Injectable'
+      brand_flag: 1 = NovaPharma
+      specialty: "'Oncology' | 'Urology'"
+      market_category: therapeutic area, e.g. 'Taxanes'
+      market_subcategory: competitive market, e.g. 'Docetaxel'
+      unit_conversion_factor: pack_units x this = equivalents
+      mg_equivalent: mg per equivalent
+  zip_territory:
+    grain: one ZIP code
+    columns:
+      zip: key
+      territory_name, territory_number: sales territory
+      region_name, region_number: region containing the territory
+
+joins:
+  - sales.org_id = organizations.org_id
+  - sales.ndc = products.ndc
+  - organizations.zip = zip_territory.zip   # the ONLY way to get territory/region for sales
+
+rules:
+  # --- Data sources -------------------------------------------------------------------------
+  - id: DS-1
+    rule: >-
+      "Sales", "our sales", "demand", "how much did we sell" mean PAID demand:
+      data_source = 'distributor' AND brand_flag = 1.
+  - id: DS-2
+    rule: >-
+      hub_dispense is free drug (patient assistance program, PAP); wac is always 0. Exclude it by
+      default. Use it only for questions about free drug / PAP / "including free drug"
+      (then data_source IN ('distributor', 'hub_dispense')).
+  - id: DS-3
+    rule: >-
+      market_data is third-party total-market volume for all manufacturers. Use it for market
+      size, competitor volume (brand_flag = 0 within market_data) and market-share denominators.
+      Never use market_data for NovaPharma sales or revenue.
+  - id: DS-4
+    rule: Never add or divide distributor volume and market_data volume inside one aggregate.
+
+  # --- Measures -----------------------------------------------------------------------------
+  - id: M-1
+    rule: >-
+      "Volume" / "units" default to SUM(pack_units). Use equivalents when comparing across
+      package sizes or for market share.
+  - id: M-2
+    rule: "Equivalents = SUM(s.pack_units * p.unit_conversion_factor), joining products p ON s.ndc = p.ndc."
+  - id: M-3
+    rule: >-
+      Revenue / dollars / gross sales = SUM(wac) on distributor rows with brand_flag = 1. Only
+      for users who may see WAC (SEC-1).
+
+  # --- Market share -------------------------------------------------------------------------
+  - id: MS-1
+    rule: >-
+      Market share = NovaPharma distributor equivalents / total market_data equivalents, for the
+      same market_subcategory (e.g. ZENOVAX competes in 'Docetaxel'). Compute numerator and
+      denominator in SEPARATE CTEs/subqueries, then divide. Use NULLIF(denominator, 0) so a zero
+      market gives NULL, not 0. Report as a percentage (x 100) rounded to 1 decimal.
+    sql: |
+      WITH nova AS (
+        SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+          AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)
+      ), market AS (
+        SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'market_data'
+          AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)
+      )
+      SELECT ROUND(CAST(100.0 * nova.eq / NULLIF(market.eq, 0) AS numeric), 1) AS market_share_pct
+      FROM nova CROSS JOIN market
+  - id: MS-2
+    rule: >-
+      Market share BY a dimension (territory, quarter, ...): group BOTH CTEs by that dimension and
+      join them on it; never join distributor rows to market_data rows row-by-row.
+    sql: |
+      WITH nova AS (
+        SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        JOIN organizations o ON s.org_id = o.org_id JOIN zip_territory z ON o.zip = z.zip
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Docetaxel'
+        GROUP BY z.territory_name
+      ), market AS (
+        SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        JOIN organizations o ON s.org_id = o.org_id JOIN zip_territory z ON o.zip = z.zip
+        WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel'
+        GROUP BY z.territory_name
+      )
+      SELECT market.territory_name,
+             ROUND(CAST(100.0 * COALESCE(nova.eq, 0) / NULLIF(market.eq, 0) AS numeric), 1) AS market_share_pct
+      FROM market LEFT JOIN nova ON nova.territory_name = market.territory_name
+      ORDER BY market_share_pct DESC
+
+  - id: MS-3
+    rule: >-
+      In this dataset market_data contains no NovaPharma rows, so the documented formula (MS-1) can
+      exceed 100% (it does for most brands). Still use MS-1 exactly. When a share is above 100%,
+      say so plainly in the answer and explain that the third-party market data excludes
+      NovaPharma's own volume, so the figure is a ratio to competitor volume, not a true share.
+
+  # --- Time ---------------------------------------------------------------------------------
+  - id: T-1
+    rule: >-
+      Relative time uses offsets: this month mo_offset = 0 (partial); last month = 1;
+      last 3 months / R3M = mo_offset IN (0, 1, 2); prior 3 months / R6M = IN (3, 4, 5);
+      last 4 weeks = wk_offset <= 3; last 6 / 12 months = mo_offset BETWEEN 0 AND 5 / 11.
+  - id: T-2
+    rule: >-
+      Calendar periods use labels: this quarter = period_qtr = '2026-Q3' (partial); last quarter
+      compared with this one = '2026-Q2'; year to date = period_mo BETWEEN '2026-01' AND '2026-09';
+      year over year compares the same labels one year apart (e.g. '2026-Q2' vs '2025-Q2').
+      A standalone "last quarter" may also mean the last 3 complete months (mo_offset IN (1, 2, 3));
+      state which interpretation you used.
+  - id: T-3
+    rule: Trends group by period_mo / period_qtr / period_wk and ORDER BY that label.
+  - id: T-4
+    rule: >-
+      R3M vs R6M trend = R3M share - R6M share; weighted trend multiplies by
+      (R3M volume + R6M volume) so large accounts rank above small volatile ones.
+
+  # --- Organizations / accounts -------------------------------------------------------------
+  - id: ORG-1
+    rule: >-
+      "Accounts", "customers", "health systems", "IDNs" without a level mean the grandparent level:
+      COALESCE(o.grandparent_org_name, o.org_name). Standalone facilities count as their own account.
+  - id: ORG-2
+    rule: >-
+      "Facilities" / "sites" are org_type = 'Facility'. "Parent" level uses
+      COALESCE(o.parent_org_name, o.org_name). Standalone facilities: org_type = 'Facility' AND
+      parent_org_id IS NULL AND grandparent_org_id IS NULL. "Active" means org_status = 'Active'.
+  - id: ORG-3
+    rule: >-
+      Sales are recorded at facility level (sales.org_id), so roll-ups join sales to organizations
+      and group by the hierarchy column. To count facilities per system, count organizations rows
+      with org_type = 'Facility'.
+  - id: ORG-4
+    rule: 340B accounts have is_340b = 1. GPO affiliation is organizations.gpo_name.
+
+  # --- Geography ----------------------------------------------------------------------------
+  - id: GEO-1
+    rule: >-
+      Territory and region come only from zip_territory via organizations.zip. Always join
+      sales -> organizations -> zip_territory for geography (never guess from state).
+
+  # --- Products / markets -------------------------------------------------------------------
+  - id: P-1
+    rule: >-
+      Market hierarchy: products.specialty -> market_category -> market_subcategory. Competitors are
+      products in the same market_subcategory. Drug names are stored UPPERCASE: match with
+      drug_name = 'ZENOVAX' (or ILIKE for partial names).
+  - id: P-2
+    rule: >-
+      "Oncology vs urology" splits use products.specialty (or sales.specialty, which equals it).
+      Strength / NDC-level questions group by products.strength or ndc.
+
+  # --- Security -----------------------------------------------------------------------------
+  - id: SEC-1
+    rule: >-
+      Only users with WAC access may see dollars. For everyone else never reference the wac
+      column; answer revenue questions in volume (pack_units or equivalents) and say that dollar
+      figures aren't available at their access level.
+  - id: SEC-2
+    rule: >-
+      Data outside the user's territory/region is filtered out by the database. Don't try to
+      filter by other territories; if a question asks about areas outside their scope, answer for
+      their own scope and say so.
+
+output:
+  - Write one PostgreSQL SELECT (CTEs allowed). No semicolons, no comments needed.
+  - Alias every computed column with a readable snake_case name (e.g. total_units, market_share_pct).
+  - Round decimals with ROUND(CAST(x AS numeric), n).
+  - Order ranked or trend results explicitly; use LIMIT for "top N".

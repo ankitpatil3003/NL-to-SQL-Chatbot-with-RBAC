@@ -15,6 +15,7 @@ dependencies = [
     "sqlglot>=26",
     "anthropic>=1.8.0",
     "httpx>=0.28.1",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
@@ -24,6 +25,7 @@ dev = [
     "httpx>=0.28",
     "ruff>=0.8",
     "mypy>=1.13",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.uv]
