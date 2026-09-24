@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
+from psycopg import sql
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_DIR = ROOT / "db"
@@ -57,6 +58,21 @@ def apply_migrations(conn: psycopg.Connection) -> None:
     for path in sorted(DB_DIR.glob("*.sql")):
         conn.execute(path.read_text(encoding="utf-8"))
         log(f"  applied {path.relative_to(ROOT)}")
+
+
+# Least-privilege logins created by db/20_rbac.sql. Passwords come from env, never from SQL files;
+# the API reads the same variables. Dev defaults match services/api/app/core/config.py.
+READER_LOGINS = {
+    "nl2sql_scoped_reader": ("DB_SCOPED_READER_PASSWORD", "scoped_reader_dev_pw"),
+    "nl2sql_exec_reader": ("DB_EXEC_READER_PASSWORD", "exec_reader_dev_pw"),
+}
+
+
+def set_reader_passwords(conn: psycopg.Connection) -> None:
+    for role, (env, default) in READER_LOGINS.items():
+        password = os.environ.get(env, default)
+        conn.execute(sql.SQL("ALTER ROLE {} LOGIN PASSWORD {}").format(sql.Identifier(role), sql.Literal(password)))
+        log(f"  login enabled for {role}" + (" (dev default password)" if env not in os.environ else ""))
 
 
 def users_insert_from_seed() -> str:
@@ -214,6 +230,7 @@ def main() -> None:
     with psycopg.connect(database_url()) as conn:  # one transaction: all or nothing
         log("migrations:")
         apply_migrations(conn)
+        set_reader_passwords(conn)
         if args.mode == "schema":
             return
         log(f"loading ({args.mode}):")

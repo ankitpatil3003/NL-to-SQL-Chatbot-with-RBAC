@@ -11,6 +11,7 @@ from app.auth import router as auth
 from app.auth.repository import sync_demo_credentials
 from app.core.config import Settings, get_settings
 from app.db.engine import build_engine
+from app.db.executor import QueryExecutor
 
 log = logging.getLogger("app")
 
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.engine = build_engine(settings)
+        app.state.executor = QueryExecutor(settings)
         if settings.demo_password:
             written = await sync_demo_credentials(app.state.engine, settings.demo_password)
             if written:
@@ -38,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await app.state.executor.dispose()
             await app.state.engine.dispose()
 
     app = FastAPI(title="NovaPharma NL-to-SQL API", version="0.1.0", lifespan=lifespan)
