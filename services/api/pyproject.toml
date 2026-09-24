@@ -10,6 +10,8 @@ dependencies = [
     "pydantic-settings>=2.6",
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30",
+    "bcrypt>=4.2",
+    "pyjwt>=2.9",
 ]
 
 [dependency-groups]
