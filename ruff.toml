@@ -1,0 +1,6 @@
+# Scripts/evals at the repo root. services/api has its own config in its pyproject.toml.
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
