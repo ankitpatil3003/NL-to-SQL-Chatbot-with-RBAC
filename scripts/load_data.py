@@ -223,7 +223,9 @@ def main() -> None:
             conn.rollback()
             sys.exit("invariant check failed; load rolled back")
     with psycopg.connect(database_url(), autocommit=True) as conn:
-        conn.execute("ANALYZE")  # fresh planner stats after a bulk load
+        # VACUUM as well as ANALYZE: sets hint bits and the visibility map on freshly COPYed rows,
+        # so the first user queries don't pay for that work (and index-only scans become possible).
+        conn.execute(f"VACUUM (ANALYZE) {', '.join(BASE_TABLES)}")
     log(f"done in {time.perf_counter() - t0:.1f}s")
 
 
