@@ -6,6 +6,7 @@ from app.llm.base import LLMRequest, Message, SystemBlock
 from app.llm.router import LLMRouter, RoutedResponse
 from app.nl2sql.prompts import prompt
 from app.nl2sql.types import HistoryTurn, Understanding
+from app.rbac.context import UserContext
 
 HISTORY_TURNS = 4
 ANSWER_CHARS = 500  # earlier answers are context, not content: truncate
@@ -25,15 +26,20 @@ def render_history(history: list[HistoryTurn]) -> str:
 
 
 async def understand(
-    llm: LLMRouter, question: str, history: list[HistoryTurn]
+    llm: LLMRouter, question: str, history: list[HistoryTurn], user: UserContext
 ) -> tuple[Understanding, RoutedResponse]:
+    # Who is asking resolves "my region", "my territory", "my accounts". Without it, the eval
+    # showed "Rank the territories in my region" from a Director being sent back as a
+    # clarification (eval 20260924-175138).
+    who = f"{user.role.value}; data scope: {user.scope_label}"
     request = LLMRequest(
         task="router",
         system=[SystemBlock(prompt("understand"), cache=True)],
         messages=[
             Message(
                 "user",
-                f"Conversation so far:\n{render_history(history)}\n\nLatest message:\n{question}",
+                f"User: {who}\n\nConversation so far:\n{render_history(history)}\n\n"
+                f"Latest message:\n{question}",
             )
         ],
         max_tokens=1200,

@@ -2,6 +2,7 @@ from app.nl2sql.types import HistoryTurn, Mention, Understanding
 from app.nl2sql.understand import ANSWER_CHARS, HISTORY_TURNS, render_history, understand
 
 from ..fakes import scripted_router
+from .test_sqlguard import RAM
 
 
 def test_history_is_bounded_and_answers_truncated() -> None:
@@ -20,7 +21,8 @@ async def test_understand_sends_history_and_returns_validated_model() -> None:
     )  # fmt: skip
     fake.add("router", expected)
     history = [HistoryTurn("What are my top 5 accounts this quarter?", "Goldcrest leads...")]
-    result, routed = await understand(llm, "now by month", history)
+    result, routed = await understand(llm, "now by month", history, RAM)
     assert result == expected and routed.response.provider == "fake"
     sent = fake.last("router").messages[0].content
     assert "What are my top 5 accounts this quarter?" in sent and sent.endswith("now by month")
+    assert "data scope: New York Metro territory" in sent

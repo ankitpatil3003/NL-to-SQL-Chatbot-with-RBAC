@@ -95,7 +95,7 @@ class Pipeline:
     ) -> AsyncIterator[Event]:
         yield Event("stage", "understanding")
         with trace.stage("understand"):
-            intent, routed = await understand(self._llm, question, history)
+            intent, routed = await understand(self._llm, question, history, user)
         trace.add_llm("router", routed)
         trace.detail["understanding"] = intent.model_dump()
 
