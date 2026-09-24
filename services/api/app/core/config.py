@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     app_env: str = "local"
     log_level: str = "INFO"
     database_url: str = Field(
-        default="postgresql+asyncpg://pharma:pharma_dev_pw@localhost:5432/pharma"
+        default="postgresql+asyncpg://pharma:pharma_dev_pw@localhost:5433/pharma"
     )
     db_pool_size: int = 5
     db_connect_timeout_s: float = 5.0

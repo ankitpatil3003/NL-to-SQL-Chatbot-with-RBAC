@@ -12,7 +12,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pharma_dev_pw}
       POSTGRES_DB: ${POSTGRES_DB:-pharma}
     ports:
-      - "5432:5432"
+      # Host port 5433: 5432 is commonly taken by a native Postgres install.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

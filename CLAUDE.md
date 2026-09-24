@@ -243,7 +243,7 @@ docker compose up -d db                       # local postgres
 python scripts/load_data.py --seed            # fast: seed_data.sql only
 python scripts/load_data.py --full            # generate + load 2M rows
 python scripts/build_kb.py                    # embeddings + few-shots
-docker compose up --build                     # db :5432, api :8000, web :3000 (use :3000)
+docker compose up --build                     # db :5433, api :8000, web :3000 (use :3000)
 pytest services/api/tests                     # unit + integration
 python evals/run_evals.py --dataset full      # evals → evals/reports/
 ```
