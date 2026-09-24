@@ -17,7 +17,8 @@ from enum import StrEnum
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.errors import ParseError
+from sqlglot.errors import OptimizeError, ParseError
+from sqlglot.optimizer.scope import Scope, traverse_scope
 
 from app.rbac.context import UserContext
 
@@ -38,6 +39,15 @@ ALLOWED_ANONYMOUS_FUNCTIONS = frozenset(
         "strpos", "to_number", "similarity", "word_similarity", "width_bucket", "bool_or",
         "bool_and", "every", "mode", "trunc", "sign", "div", "mod", "cbrt", "ceiling", "floor",
     }
+)  # fmt: skip
+
+# Typed functions are allowed by default, except these, which inspect the server environment
+# (reconnaissance, not analytics). Found by the adversarial suite: version() is typed.
+# Bare `user` / `current_role` parse as column names; at worst they reveal the reader's own role
+# name, which the database limits anyway.
+ENVIRONMENT_FUNCTIONS: tuple[type[exp.Expr], ...] = (
+    exp.CurrentVersion, exp.CurrentUser, exp.SessionUser, exp.CurrentSchema,
+    exp.CurrentDatabase, exp.CurrentCatalog,
 )  # fmt: skip
 
 # Nodes that write, change state or escape the query model, wherever they appear (incl. CTEs).
@@ -80,6 +90,7 @@ class GuardedQuery:
     sql: str  # the normalised SQL to execute
     tables: frozenset[str]  # base tables referenced
     limit_applied: bool  # the guard added or lowered the LIMIT
+    autofixes: tuple[str, ...] = ()  # deterministic repairs applied (recorded in traces)
 
 
 def guard(sql: str, user: UserContext, *, max_rows: int) -> GuardedQuery:
@@ -90,8 +101,9 @@ def guard(sql: str, user: UserContext, *, max_rows: int) -> GuardedQuery:
     if not user.can_view_wac:
         _check_no_wac(root)
     _check_no_wall_clock(root)
+    autofixes = _autofix(root)
     limit_applied = _enforce_limit(root, max_rows)
-    return GuardedQuery(root.sql(dialect=DIALECT), frozenset(tables), limit_applied)
+    return GuardedQuery(root.sql(dialect=DIALECT), frozenset(tables), limit_applied, autofixes)
 
 
 def _parse_single(sql: str) -> exp.Expr:
@@ -129,8 +141,28 @@ def _check_is_read_only_query(root: exp.Expr) -> None:
             )
 
 
+def _cte_references(root: exp.Expr) -> set[int]:
+    """ids of Table nodes that resolve to a CTE *in their own scope*.
+
+    A global set of CTE names is not enough: in
+    `SELECT ... FROM (WITH users AS (...) SELECT ...) a, users u` the outer `users` is the real
+    table (verified bypass of a name-based check). Anything that can't be positively resolved to
+    a CTE is treated as a real table, so resolution failures only ever make the guard stricter.
+    """
+    refs: set[int] = set()
+    try:
+        scopes = traverse_scope(root)
+    except OptimizeError:
+        return refs
+    for scope in scopes:
+        for table in scope.tables:
+            if isinstance(scope.sources.get(table.alias_or_name), Scope):
+                refs.add(id(table))
+    return refs
+
+
 def _check_tables(root: exp.Expr) -> set[str]:
-    cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
+    cte_refs = _cte_references(root)
     used: set[str] = set()
     allowed = ", ".join(sorted(ALLOWED_TABLES))
     for table in root.find_all(exp.Table):
@@ -146,7 +178,7 @@ def _check_tables(root: exp.Expr) -> set[str]:
                 f"Use unqualified table names ({allowed}); '{table.sql(dialect=DIALECT)}' is "
                 "schema-qualified.",
             )
-        if name in cte_names:
+        if id(table) in cte_refs:
             continue
         if name not in ALLOWED_TABLES:
             raise GuardViolation(
@@ -157,6 +189,11 @@ def _check_tables(root: exp.Expr) -> set[str]:
 
 
 def _check_functions(root: exp.Expr) -> None:
+    for func in root.find_all(*ENVIRONMENT_FUNCTIONS):
+        raise GuardViolation(
+            Violation.FORBIDDEN_FUNCTION,
+            f"{func.sql(dialect=DIALECT)} is not allowed: only analytic SQL is permitted.",
+        )
     for func in root.find_all(exp.Anonymous):
         name = func.name.lower()
         qualified = isinstance(func.parent, exp.Dot)
@@ -189,6 +226,24 @@ def _check_no_wall_clock(root: exp.Expr) -> None:
             "columns: mo_offset (0 = current month, 1 = last month), wk_offset (0 = current "
             "week), or the period_mo / period_qtr labels.",
         )
+
+
+def _autofix(root: exp.Expr) -> tuple[str, ...]:
+    """Repair mistakes that are certain and mechanical, saving a round trip to the model.
+
+    ROUND(x, n): Postgres only has round(numeric, int), and the measure columns are DOUBLE
+    PRECISION (see db/00_base_schema.sql), so ROUND(SUM(pack_units), 2) fails with "function
+    round(double precision, integer) does not exist". Casting the argument to NUMERIC is exact
+    for display purposes and valid for every numeric input.
+    """
+    fixes: list[str] = []
+    for node in list(root.find_all(exp.Round)):
+        arg = node.this
+        already_numeric = isinstance(arg, exp.Cast) and arg.to.is_type("decimal")
+        if node.args.get("decimals") is not None and not already_numeric:
+            node.set("this", exp.cast(arg.copy(), "numeric"))
+            fixes.append("round_numeric_cast")
+    return tuple(fixes)
 
 
 def _enforce_limit(root: exp.Expr, max_rows: int) -> bool:

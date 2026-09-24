@@ -53,8 +53,8 @@ VALID = {
                SUM(CASE WHEN mo_offset IN (3, 4, 5) THEN pack_units END) AS r6m
         FROM sales WHERE data_source = 'distributor' AND brand_flag = 1 GROUP BY drug_name""",
     "340B share with casts": """
-        SELECT ROUND(100.0 * SUM(CASE WHEN o.is_340b = 1 THEN s.pack_units ELSE 0 END)::numeric
-               / NULLIF(SUM(s.pack_units), 0), 2) AS pct_340b
+        SELECT ROUND(CAST(100.0 * SUM(CASE WHEN o.is_340b = 1 THEN s.pack_units ELSE 0 END)
+               / NULLIF(SUM(s.pack_units), 0) AS numeric), 2) AS pct_340b
         FROM sales s JOIN organizations o USING (org_id) WHERE s.data_source = 'distributor'""",
     "union + string/date functions": """
         SELECT UPPER(drug_name) AS d, TO_CHAR(TO_DATE(transaction_date, 'YYYY-MM-DD'), 'YYYY-MM') AS m
@@ -62,8 +62,8 @@ VALID = {
         UNION ALL
         SELECT generic_name, SPLIT_PART(ndc, '-', 1) FROM products""",
     "fuzzy name match": """
-        SELECT org_name FROM organizations WHERE similarity(org_name, 'memorial health') > 0.3
-        ORDER BY similarity(org_name, 'memorial health') DESC LIMIT 5""",
+        SELECT org_name FROM organizations WHERE similarity(org_name, 'medical group') > 0.3
+        ORDER BY similarity(org_name, 'medical group') DESC LIMIT 5""",
 }
 
 
@@ -164,3 +164,20 @@ def test_structural_rejections(sql: str, code: Violation) -> None:
     with pytest.raises(GuardViolation) as err:
         guard(sql, EXEC, max_rows=10)
     assert err.value.code is code
+
+
+# --- Autofix ------------------------------------------------------------------------------------
+
+
+def test_round_on_double_gets_numeric_cast() -> None:
+    result = guard("SELECT ROUND(SUM(pack_units) / 3, 2) FROM sales", RAM, max_rows=10)
+    assert result.autofixes == ("round_numeric_cast",)
+    assert "ROUND(CAST(SUM(pack_units) / 3 AS DECIMAL), 2)" in result.sql
+
+
+def test_round_already_numeric_or_without_decimals_is_untouched() -> None:
+    for sql in [
+        "SELECT ROUND(CAST(SUM(pack_units) AS numeric), 2) FROM sales",
+        "SELECT ROUND(SUM(pack_units)) FROM sales",
+    ]:
+        assert guard(sql, RAM, max_rows=10).autofixes == ()
