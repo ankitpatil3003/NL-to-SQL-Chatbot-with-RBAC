@@ -1,0 +1,13 @@
+# Root build context (services/api/Dockerfile). Keep it small: the generated data is ~260MB.
+.git
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+schema/generated
+services/api/tests
+.env
+.env.*

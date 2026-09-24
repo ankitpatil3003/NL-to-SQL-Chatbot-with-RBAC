@@ -30,7 +30,9 @@ services:
       retries: 20
 
   api:
-    build: ./services/api
+    build:
+      context: .  # repo root: the image includes docs/ for the knowledge index
+      dockerfile: services/api/Dockerfile
     env_file:
       - path: .env
         required: false
@@ -38,6 +40,8 @@ services:
       # Inside the compose network the database host is "db", not localhost.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pharma}:${POSTGRES_PASSWORD:-pharma_dev_pw}@db:5432/${POSTGRES_DB:-pharma}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-novapharma-demo}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:

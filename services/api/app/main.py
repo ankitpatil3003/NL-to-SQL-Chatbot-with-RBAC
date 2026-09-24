@@ -12,6 +12,7 @@ from app.auth.repository import sync_demo_credentials
 from app.core.config import Settings, get_settings
 from app.db.engine import build_engine
 from app.db.executor import QueryExecutor
+from app.knowledge.base import init_knowledge
 from app.llm.factory import build_router
 
 log = logging.getLogger("app")
@@ -35,6 +36,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = build_engine(settings)
         app.state.executor = QueryExecutor(settings)
         app.state.llm = build_router(settings)  # None when no LLM provider key is configured
+        app.state.knowledge = await init_knowledge(
+            app.state.engine, settings.knowledge_docs_dir, settings.embed_cache_dir
+        )
         if settings.demo_password:
             written = await sync_demo_credentials(app.state.engine, settings.demo_password)
             if written:

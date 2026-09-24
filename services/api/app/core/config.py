@@ -1,12 +1,19 @@
 """Application settings, loaded from environment variables (12-factor)."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 DEV_JWT_SECRET = "dev-only-insecure-jwt-secret-change-me"
+
+
+def _repo_docs_dir() -> Path:
+    """<repo>/docs when running from a checkout; the Docker image sets KNOWLEDGE_DOCS_DIR."""
+    here = Path(__file__).resolve()
+    return here.parents[4] / "docs" if len(here.parents) > 4 else Path("docs")
 
 
 class Settings(BaseSettings):
@@ -42,6 +49,10 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     anthropic_api_key: str | None = None
     public_url: str = "http://localhost:3000"
+
+    # --- Knowledge ---------------------------------------------------------------------------
+    knowledge_docs_dir: Path = Field(default_factory=_repo_docs_dir)
+    embed_cache_dir: str | None = None  # fastembed model cache; baked into the image in Docker
 
     jwt_secret: str = DEV_JWT_SECRET
     jwt_ttl_minutes: int = 720
