@@ -94,3 +94,13 @@ def test_context_includes_previous_sql_for_follow_ups() -> None:
     ctx = build_context("now by month", docs=[], examples=[], resolutions=[], previous=previous)
     assert "Previous question and its SQL" in ctx and "SELECT 1" in ctx
     assert ctx.rstrip().endswith("now by month")
+
+
+def test_context_redirects_dollar_questions_to_volume_for_non_wac_users() -> None:
+    ctx = build_context(
+        "total sales in dollars", docs=[], examples=[], resolutions=[], previous=None,
+        volume_instead_of_dollars=True,
+    )  # fmt: skip
+    assert "Answer the same question in volume (pack_units)" in ctx
+    plain = build_context("total sales", docs=[], examples=[], resolutions=[], previous=None)
+    assert "Access note" not in plain

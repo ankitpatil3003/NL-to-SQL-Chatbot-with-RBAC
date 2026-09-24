@@ -127,7 +127,12 @@ class Pipeline:
         yield Event("stage", "writing_sql")
         previous = history[-1] if intent.is_follow_up and history else None
         context = build_context(
-            standalone, docs=docs, examples=examples, resolutions=resolutions, previous=previous
+            standalone,
+            docs=docs,
+            examples=examples,
+            resolutions=resolutions,
+            previous=previous,
+            volume_instead_of_dollars=intent.asks_for_dollars and not user.can_view_wac,
         )
         with trace.stage("sql"):
             outcome = await generate_and_run(

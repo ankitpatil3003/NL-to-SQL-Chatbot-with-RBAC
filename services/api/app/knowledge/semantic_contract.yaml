@@ -179,9 +179,9 @@ rules:
     rule: Trends group by period_mo / period_qtr / period_wk and ORDER BY that label.
   - id: T-5
     rule: >-
-      A total with no stated period ("what are our total sales?") covers all available history;
-      state the period covered in the answer. Rankings and "performance" questions without a
-      period use the last 3 months (R3M).
+      With no stated period, totals and rankings ("total sales", "which region has the most
+      volume", "top accounts") cover all available history; state the period covered in the
+      answer. The only default window is market share (MS-4: last 3 months).
 
   - id: T-4
     rule: >-

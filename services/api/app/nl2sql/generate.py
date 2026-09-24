@@ -74,6 +74,7 @@ def build_context(
     examples: list[SelectedExample],
     resolutions: list[Resolution],
     previous: HistoryTurn | None,
+    volume_instead_of_dollars: bool = False,
 ) -> str:
     parts: list[str] = []
     if docs:
@@ -93,6 +94,13 @@ def build_context(
             "and window unless told otherwise)"
         )
         parts.append(f"Q: {previous.question}\n```sql\n{previous.sql}\n```")
+    if volume_instead_of_dollars:
+        # docs/security_model.md: offer volume instead of refusing. Measured: without this, a
+        # model marked "total sales in dollars" from a RAM as unanswerable (eval 20260924-173557).
+        parts.append(
+            "## Access note\nThe user asked for dollar figures, which they may not see (SEC-1). "
+            "Answer the same question in volume (pack_units) instead. Do not mark it unanswerable."
+        )
     parts.append(f"## Question\n{question}")
     return "\n\n".join(parts)
 
