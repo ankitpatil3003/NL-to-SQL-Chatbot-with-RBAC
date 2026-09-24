@@ -58,12 +58,18 @@ dataset, with role-based row/column security enforced on every query.
 ## 4. Architecture
 
 ```
-Browser ──HTTPS──▶ ALB ──▶ web (Next.js, ECS) ──▶ api (FastAPI, ECS) ──▶ RDS Postgres
-                                                     │                    ├─ public.*   (frozen base tables)
-                                                     │                    ├─ scoped.*   (RBAC views)
-                                                     ├─▶ Anthropic API    └─ app.*      (chat, creds, traces, kb embeddings)
-                                                     └─▶ OpenRouter (fallback)
+Browser ──HTTPS──▶ ALB ─┬─ /*      ──▶ web (Next.js, ECS)
+                        └─ /api/*  ──▶ api (FastAPI, ECS) ──▶ RDS Postgres
+                                          │                    ├─ public.*   (frozen base tables)
+                                          │                    ├─ scoped.*   (RBAC views)
+                                          ├─▶ Anthropic API    └─ app.*      (chat, creds, traces, kb embeddings)
+                                          └─▶ OpenRouter (fallback)
 ```
+
+**Routing:** the ALB sends `/api/*` straight to FastAPI, so the browser sees one origin (httpOnly auth
+cookies and SSE streams need no proxy hop through Next). All FastAPI business routes live under
+`/api`; `/health` and `/health/ready` are the API's probes, `/healthz` is the web's. Locally,
+`next.config.ts` emulates the ALB rule with a rewrite when `API_INTERNAL_URL` is set (compose does this).
 
 ### 4.1 Repository layout (target)
 
@@ -237,7 +243,7 @@ docker compose up -d db                       # local postgres
 python scripts/load_data.py --seed            # fast: seed_data.sql only
 python scripts/load_data.py --full            # generate + load 2M rows
 python scripts/build_kb.py                    # embeddings + few-shots
-docker compose up                             # api :8000, web :3000
+docker compose up --build                     # db :5432, api :8000, web :3000 (use :3000)
 pytest services/api/tests                     # unit + integration
 python evals/run_evals.py --dataset full      # evals → evals/reports/
 ```
