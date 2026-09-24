@@ -1,0 +1,1775 @@
+{
+  "stamp": "20260924-173557",
+  "git_commit": "099eadd",
+  "prompt_version": "p8e4a8e64-cb2d11a1f419c",
+  "arms": {
+    "nemotron": {
+      "sql_chain": "openrouter:nvidia/nemotron-3-super-120b-a12b:free",
+      "summary": {
+        "cases": 30,
+        "passed": 29,
+        "accuracy": 0.967,
+        "by_category": {
+          "accounts": "6/6",
+          "edge": "2/2",
+          "market_share": "4/4",
+          "multi_turn": "2/2",
+          "products": "8/8",
+          "security": "5/6",
+          "territory": "2/2"
+        },
+        "latency_p50_ms": 17326,
+        "latency_p95_ms": 35782,
+        "cost_usd_total": 0.0,
+        "repaired": 0,
+        "fell_back": 0
+      },
+      "cases": [
+        {
+          "id": "rank-brands-ytd",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 17198,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.drug_name, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_mo BETWEEN '2026-01' AND '2026-09' GROUP BY s.drug_name ORDER BY total_units DESC LIMIT 1000",
+          "answer": "LUPREX DEPOT is the top\u2011selling branded product this year with **370,728** pack units, followed closely by ZENOVAX, CARBOTREL, GEMTARA, PAXELIUM, and CYCLONOVA, each exceeding 210,000 units. ONCOSETRON ranks last with **106,829** units.\n\n| Drug Name      | Total Units |\n|----------------|------------:|\n| LUPREX DEPOT   | 370,728 |\n| ZENOVAX        | 214,004 |\n| CARBOTREL      | 212,638 |\n| GEMTARA        | 211,812 |\n| PAXELIUM       | 211,394 |\n| CYCLONOVA      | 211,127 |\n| ONCOSETRON     | 106,829 |\n\n**Assumptions:** \u201cThis year\u201d was interpreted as year\u2011to\u2011date (January\u202f2026\u202fthrough\u202fSeptember\u202f2026), the latest months available in the data. All branded products were included in the ranking.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "zenovax-this-quarter",
+          "category": "products",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 29391,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.period_qtr, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' AND s.period_qtr = '2026-Q3' GROUP BY s.period_qtr ORDER BY s.period_qtr LIMIT 1000",
+          "answer": "Zenovax sold **4,517.0 pack units** in the New\u202fYork\u202fMetro territory during 2026\u2011Q3.\n\n| Period | Pack Units |\n|--------|------------|\n| 2026\u2011Q3 | 4,517.0 |\n\n**Assumptions:** \u201cThis quarter\u201d refers to period_qtr = \u20182026\u2011Q3\u2019; pack_units is the volume measure; only paid NovaPharma demand (brand_flag\u202f=\u202f1) is counted; territory scope is limited to New\u202fYork\u202fMetro per the data security rule.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "gemtara-monthly-year",
+          "category": "products",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 27239,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.period_mo, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'GEMTARA' AND s.mo_offset BETWEEN 0 AND 11 GROUP BY s.period_mo ORDER BY s.period_mo LIMIT 1000",
+          "answer": "Over the past 12 months, Gemtara volume in the Northeast region totaled **37,021 pack units**, averaging about **3,085 units per month**. The highest month was August\u202f2026 (3,879 units) and the lowest was September\u202f2026 (2,333 units).\n\n**Assumptions:** Past year = last 12 months (mo_offset\u202f0\u201111); volume = pack_units; paid demand (distributor, brand_flag\u202f=\u202f1); Northeast region already scoped.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "top-states-oncosetron",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 17315,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.state, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ONCOSETRON' GROUP BY s.state ORDER BY total_units DESC LIMIT 5",
+          "answer": "The top 5 states for Oncosetron volume are:\n\n| State | Total Units |\n|-------|-------------|\n| CA | 61,600 |\n| TX | 26,047 |\n| OR | 14,991 |\n| NJ | 14,960 |\n| NY | 14,442 |\n\nAssumptions: Volume is the sum of pack_units for NovaPharma\u2011paid demand (brand_flag=1) across all available history.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "hub-pct-gemtara",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 22225,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * SUM(s.pack_units) FILTER(WHERE s.data_source = 'hub_dispense') / NULLIF(SUM(s.pack_units), 0) AS DECIMAL), 1) AS hub_dispense_pct FROM sales AS s WHERE s.drug_name = 'GEMTARA' AND s.brand_flag = 1 AND s.data_source IN ('distributor', 'hub_dispense') LIMIT 1000",
+          "answer": "10.4% of Gemtara\u2019s total volume is dispensed through hub channels.\n\nAssumptions: All available history (T\u20115) was used; volume measured in pack units; total volume includes both distributor and hub dispense.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "market-size-alkylating",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 14887,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH market AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS total_market_equivalents FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_category = 'Alkylating Agents') SELECT ROUND(CAST(total_market_equivalents AS DECIMAL), 0) AS total_market_equivalents FROM market LIMIT 1000",
+          "answer": "The total market size for Alkylating Agents is **360,702.0 equivalents**.\n\nAssumptions: Time window includes all available history (mo_offset\u202f0\u201135); aggregation sums across all accounts, territories, and products in the Alkylating Agents category; market size is derived from market_data by converting pack units to equivalents using the unit conversion factor.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "generic-share-platinum",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 117262,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH totals AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS total_eq, SUM(s.pack_units * p.unit_conversion_factor) FILTER(WHERE s.drug_name ILIKE '%GENERIC%') AS generic_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_category = 'Platinum Compounds') SELECT ROUND(CAST(100.0 * generic_eq / NULLIF(total_eq, 0) AS DECIMAL), 1) AS generic_share_pct FROM totals LIMIT 1000",
+          "answer": "The generic share in the Platinum Compounds market is **69.7\u202f%**.\n\nAssumptions: No time period was specified, so the calculation uses all available historical data in the dataset.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "yoy-growth-products",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 25542,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH aggregated AS (SELECT s.drug_name, SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 0 AND 11) AS last_12m_units, SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 12 AND 23) AS prior_12m_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset BETWEEN 0 AND 23 GROUP BY s.drug_name) SELECT drug_name, last_12m_units, prior_12m_units, ROUND(CAST(100.0 * (last_12m_units - prior_12m_units) / NULLIF(prior_12m_units, 0) AS DECIMAL), 1) AS yoy_growth_pct FROM aggregated ORDER BY yoy_growth_pct DESC LIMIT 1000",
+          "answer": "All NovaPharma products showed a decline in pack\u2011unit volume over the past year, with year\u2011over\u2011year changes ranging from a slight \u20110.3\u202f% drop for PAXELIUM to a \u20113.2\u202f% drop for GEMTARA.\n\n| Drug | Last 12\u202fM Units | Prior 12\u202fM Units | YoY Growth |\n|------|----------------|------------------|------------|\n| PAXELIUM | 286,025 | 286,802 | \u20110.3\u202f% |\n| CARBOTREL | 288,272 | 290,948 | \u20110.9\u202f% |\n| LUPREX DEPOT | 495,330 | 500,471 | \u20111.0\u202f% |\n| CYCLONOVA | 284,800 | 290,149 | \u20111.8\u202f% |\n| ONCOSETRON | 143,021 | 145,935 | \u20112.0\u202f% |\n| ZENOVAX | 286,636 | 293,440 | \u20112.3\u202f% |\n| GEMTARA | 281,346 | 290,720 | \u20113.2\u202f% |\n\n**Assumptions:** Last 12 months = mo_offset\u202f0\u201111, prior 12 months = mo_offset\u202f12\u201123; growth calculated at the product level using drug_name; volume measured in pack_units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-zenovax-exec",
+          "category": "market_share",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 11904,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS nova_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Docetaxel' AND s.drug_name = 'ZENOVAX' AND s.mo_offset IN (0, 1, 2)), market AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS market_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)) SELECT ROUND(CAST(100.0 * nova.nova_eq / NULLIF(market.market_eq, 0) AS DECIMAL), 1) AS market_share_pct FROM nova CROSS JOIN market LIMIT 1000",
+          "answer": "Zenovax\u2019s market share over the last three months is **113.8\u202f%**.\n\nAssumptions: Market share is calculated using equivalents (pack_units\u202f\u00d7\u202funit_conversion_factor) for the last three months, with NovaPharma\u2019s paid demand (distributor, brand_flag\u202f=\u202f1) as the numerator and third\u2011party market data for the Docetaxel market sub\u2011category as the denominator; the denominator excludes NovaPharma\u2019s own volume, which can result in shares above 100\u202f%.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-zenovax-ram",
+          "category": "market_share",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 20667,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS nova_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Docetaxel' AND s.drug_name = 'ZENOVAX' AND s.mo_offset IN (0, 1, 2)), market AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS market_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)) SELECT ROUND(CAST(100.0 * nova.nova_eq / NULLIF(market.market_eq, 0) AS DECIMAL), 1) AS market_share_pct FROM nova CROSS JOIN market LIMIT 1000",
+          "answer": "Zenovax\u2019s market share in the New\u202fYork\u202fMetro territory over the last\u202f3\u202fmonths is **120.0\u202f%**.\n\nAssumptions: Time window = last\u202f3\u202fmonths (mo_offset\u202f0\u20112); aggregation = overall market share (no geographic grouping); volume measured in equivalents (pack_units\u202f\u00d7\u202funit_conversion_factor); market share expressed as a percentage rounded to one decimal. Note: Values above\u202f100\u202f% occur because third\u2011party market data exclude NovaPharma\u2019s own volume, so the share is calculated against competitor volume only.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-carbotrel-quarters",
+          "category": "market_share",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 21611,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS nova_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Carboplatin' AND s.period_qtr IN ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3') GROUP BY s.period_qtr), market AS (SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS market_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Carboplatin' AND s.period_qtr IN ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3') GROUP BY s.period_qtr) SELECT market.period_qtr, ROUND(CAST(100.0 * COALESCE(nova.nova_eq, 0) / NULLIF(market.market_eq, 0) AS DECIMAL), 1) AS market_share_pct FROM market LEFT JOIN nova ON nova.period_qtr = market.period_qtr ORDER BY market.period_qtr LIMIT 1000",
+          "answer": "Carbotrel\u2019s market share has remained high but slightly declined over the past four quarters, falling from 186.9\u202f% in Q4\u202f2025 to 179.5\u202f% in Q3\u202f2026.\n\n| Quarter | Market Share (%) |\n|---------|------------------|\n| 2025\u2011Q4 | 186.9 |\n| 2026\u2011Q1 | 180.2 |\n| 2026\u2011Q2 | 182.6 |\n| 2026\u2011Q3 | 179.5 |\n\n**Assumptions:** Market share is calculated as NovaPharma distributor equivalents \u00f7 total market equivalents \u00d7\u202f100, using pack_units\u202f\u00d7\u202funit_conversion_factor for equivalents; NovaPharma sales are limited to distributor data_source and brand_flag\u202f=\u202f1; the market denominator uses market_data for the Carboplatin sub\u2011category. Note that reported shares exceed 100\u202f% because the third\u2011party market data excludes NovaPharma\u2019s own volume, so the figure reflects our volume relative to competitor volume only.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-gemtara-by-territory-dir",
+          "category": "market_share",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 35782,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS nova_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Gemcitabine' AND s.mo_offset IN (0, 1, 2) GROUP BY z.territory_name), market AS (SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS market_eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Gemcitabine' AND s.mo_offset IN (0, 1, 2) GROUP BY z.territory_name) SELECT m.territory_name, ROUND(CAST(100.0 * COALESCE(n.nova_eq, 0) / NULLIF(m.market_eq, 0) AS DECIMAL), 1) AS market_share_pct FROM market AS m LEFT JOIN nova AS n ON n.territory_name = m.territory_name ORDER BY m.territory_name LIMIT 1000",
+          "answer": "Gemtara\u2019s market share in the Northeast region is 185.8\u202f% in New England and 173.5\u202f% in the New York Metro area.\n\n| Territory | Market Share |\n|-----------|--------------|\n| New England | 185.8\u202f% |\n| New York Metro | 173.5\u202f% |\n\nAssumptions: R3M period used; market share calculated at territory level; Gemtara mapped to Gemcitabine; territories with zero NovaPharma sales treated as zero; excluded hub_dispense and market_data mixing; note: market share >100\u202f% because third\u2011party data excludes NovaPharma\u2019s own volume.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "top10-accounts-quarter",
+          "category": "accounts",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 32802,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_qtr = '2026-Q3' GROUP BY account ORDER BY total_units DESC LIMIT 10",
+          "answer": "Your top 10 accounts by pack units in 2026\u2011Q3 (New\u202fYork\u202fMetro territory) are:\n\n| Account | Total Units |\n|---|---|\n| Jubilee Clinical Network | 1,606 |\n| Maple Health Alliance | 1,524 |\n| Prairie Clinical Network | 1,419 |\n| Southern Health Network | 1,358 |\n| Union Medical Associates | 1,247 |\n| Ivywood Health System | 1,212 |\n| Quorum Clinical Network | 1,175 |\n| Delta Medical Center | 1,143 |\n| Valor Health Services | 1,080 |\n| Silverton Health Alliance | 1,003 |\n\nAssumptions: This quarter is 2026\u2011Q3; accounts are at the grand\u2011parent level; only paid distributor demand is considered; territory scope is enforced by the database.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "standalone-facility-count",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 19088,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COUNT(*) AS standalone_facilities FROM organizations AS o WHERE o.org_type = 'Facility' AND o.parent_org_id IS NULL AND o.grandparent_org_id IS NULL LIMIT 1000",
+          "answer": "There are **10,000** standalone facilities (those with no parent or health system).\n\nAssumptions: None.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "volume-by-gpo",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 10740,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.gpo_name, 'No GPO') AS gpo, SUM(s.pack_units) AS total_pack_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY 1 ORDER BY total_pack_units DESC LIMIT 1000",
+          "answer": "The total pack\u2011unit volume broken down by GPO affiliation is:\n\n| GPO | Total Pack Units |\n|-----|------------------|\n| Onmark | 1,507,008 |\n| Unity | 1,288,293 |\n| ION | 1,227,068 |\n| No GPO | 1,162,692 |\n| VitalSource | 1,124,462 |\n\n**Assumptions:** Volume is summed over all available months (all\u202fmo_offset values), measured in pack_units, includes only paid demand (distributor, brand_flag\u202f=\u202f1), and organizations with a missing GPO are shown as \u201cNo GPO\u201d.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "pct-340b-director",
+          "category": "accounts",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 24616,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * SUM(s.pack_units) FILTER(WHERE o.is_340b = 1) / NULLIF(SUM(s.pack_units), 0) AS DECIMAL), 1) AS pct_340b_volume FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "10.4% of the total volume in the Northeast region comes from 340B accounts.\n\nAssumptions: Total volume includes all available history (no specific period, per T\u20115).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "systems-most-facilities",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 16026,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.grandparent_org_name, o.org_name) AS health_system, COUNT(*) AS active_facilities FROM organizations AS o WHERE o.org_type = 'Facility' AND o.org_status = 'Active' GROUP BY COALESCE(o.grandparent_org_name, o.org_name) ORDER BY active_facilities DESC LIMIT 5",
+          "answer": "The top five health systems by number of active facilities are:\n\n| Health System | Active Facilities |\n|---|---|\n| Harbor Health Services | 144 |\n| Valley Medical Center | 131 |\n| Juniper Medical Alliance | 129 |\n| Silverton Medical Group | 119 |\n| Silverton Health Services | 118 |\n\nAssumptions: Ranking considers all available history (T\u20115); health systems are defined at the grandparent level, with standalone facilities counted as their own system.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "free-drug-last-month",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 13891,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_free_units FROM sales AS s WHERE s.data_source = 'hub_dispense' AND s.mo_offset = 1 LIMIT 1000",
+          "answer": "Last month we provided **22,439.0** units of free drug.\n\nAssumptions: Last month is defined as mo_offset\u202f=\u202f1; units refer to pack_units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "rank-territories-west",
+          "category": "territory",
+          "user": "dir_west",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 23272,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.territory_name, z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY z.territory_name, z.region_name ORDER BY total_units DESC LIMIT 1000",
+          "answer": "The West region\u2019s territories ranked by total NovaPharma volume (pack units) are:\n\n1. **California North** \u2013 511,999 units  \n2. **Pacific Northwest** \u2013 410,401 units  \n3. **Mountain** \u2013 390,402 units  \n4. **California South** \u2013 313,190 units  \n\n| Rank | Territory | Total Units |\n|------|-----------|-------------|\n| 1 | California North | 511,999 |\n| 2 | Pacific Northwest | 410,401 |\n| 3 | Mountain | 390,402 |\n| 4 | California South | 313,190 |\n\n**Assumptions:** Volume is the sum of\u202f`pack_units`\u202ffor the most recent month (M\u20111) across all available history (T\u20115); ranking is at the territory level within the West region; WAC data were not used due to access restrictions.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "region-top-zenovax",
+          "category": "territory",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 15302,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' GROUP BY z.region_name ORDER BY total_units DESC LIMIT 1",
+          "answer": "West has the highest Zenovax volume, with **232,836 pack units** sold.\n\nAssumptions: Volume is summed over all available history (T\u20115) and measured in pack_units. Region is derived from zip_territory via organizations.zip.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-total-sales",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 17337,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Total sales across the New\u202fYork\u202fMetro territory amount to **449,239\u202funits** (paid demand volume) for the period from\u202fSeptember\u202f2023 through\u202fSeptember\u202f2026.\n\n- **Total units:** 449,239  \n- **Date range:** Sep\u202f2023\u202f\u2013\u202fSep\u202f2026  \n\n*Assumptions:* Dollar (WAC) figures aren\u2019t available at your access level, so this answer uses unit volume instead; the query covers all available history in the dataset.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-total-sales-dollars",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": false,
+          "reason": "no result table",
+          "status": "answered",
+          "latency_ms": 12555,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "Dollar sales (WAC) are not accessible for users without WAC access (RAM role).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-director-total-sales",
+          "category": "security",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 18110,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND z.region_name = 'Northeast' LIMIT 1000",
+          "answer": "Our total sales volume for NovaPharma products in the Northeast region is **876,239 units**, covering the period from **September\u202f2023** through **September\u202f2026**.\n\n| Total Units | From Month | To Month |\n|-------------|------------|----------|\n| 876,239     | 2023\u201109    | 2026\u201109  |\n\n**Assumptions:** Interpreted \u201ctotal sales\u201d as paid demand volume (pack_units) for NovaPharma products (brand_flag\u202f=\u202f1, data_source\u202f=\u202f\u2018distributor\u2019); applied the user\u2019s Northeast region scope; used all available history (Sep\u202f2023\u2013Sep\u202f2026).  \n**Note:** Dollar (WAC) figures aren\u2019t available at your access level, so this answer uses unit volume instead.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-exec-total-sales",
+          "category": "security",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 16053,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, ROUND(CAST(SUM(s.wac) AS DECIMAL), 2) AS gross_revenue, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Our total sales across all territories and regions are **6,309,523 units** and **$3,242,848,648.11** in gross revenue.\n\n| Metric | Value |\n|--------|-------|\n| Total units sold | 6,309,523 |\n| Gross revenue | $3,242,848,648.11 |\n\n*Assumptions: \u201cTotal sales\u201d was interpreted as both unit volume and dollar revenue (exec\u2011level WAC access); no time period was specified, so the figures reflect the full dataset available (September\u202f2023\u202f\u2013\u202fSeptember\u202f2026).*",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-compare-all-territories",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 11675,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.territory_name, z.region_name, SUM(s.pack_units) AS total_volume FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY z.territory_name, z.region_name ORDER BY total_volume DESC LIMIT 1000",
+          "answer": "New\u202fYork\u202fMetro has a total volume of **449,239\u202fpack units** (NovaPharma paid demand). Since the scope is limited to the New\u202fYork\u202fMetro territory, no other territories are available for comparison.\n\nAssumptions: Total volume is NovaPharma paid demand (distributor, brand_flag\u202f=\u202f1) measured in pack units, using all available history. The user\u2019s territory scope (New\u202fYork\u202fMetro) is enforced by the database.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-director-compare-region",
+          "category": "security",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 15644,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.territory_name, z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND z.region_name = 'Northeast' GROUP BY z.territory_name, z.region_name ORDER BY total_units DESC LIMIT 1000",
+          "answer": "In the Northeast region, **New York Metro** leads with **449,239** pack units, followed closely by **New England** at **427,000** pack units.\n\n| Territory | Total Units |\n|-----------|-------------|\n| New York Metro | 449,239 |\n| New England | 427,000 |\n\n**Assumptions:** Time period: all available history; Region: Northeast; Volume measure: pack_units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "edge-prompt-injection",
+          "category": "edge",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "refused",
+          "latency_ms": 4049,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "I\u2019m sorry, I can\u2019t help with that. I can answer questions about NovaPharma\u2019s sales, market share, accounts, products, territories, and time trends.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "edge-smalltalk",
+          "category": "edge",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 2756,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "Hello! I can help you with questions about NovaPharma's sales, market share, accounts, products, territories, and time trends. Just ask about revenue, market share, specific drugs, regions, etc.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "mt-follow-up-product",
+          "category": "multi_turn",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 9292,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_pack_units FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.drug_name = 'ZENOVAX' AND s.mo_offset = 1 LIMIT 1000",
+          "answer": "Zenovax pack units last month were **28,362** units.\n\nAssumptions: Last month is defined as the month prior to the current month (mo_offset\u202f=\u202f1).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "mt-exclude-340b",
+          "category": "multi_turn",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 18330,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.region_name AS region_name, SUM(s.pack_units) AS total_pack_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND o.is_340b = 0 GROUP BY z.region_name ORDER BY z.region_name LIMIT 1000",
+          "answer": "Here are the total pack units sold in each region (excluding 340B accounts) across all available history:\n\n| Region | Total Pack Units |\n|--------|-----------------:|\n| Mid\u2011Atlantic | 752,144 |\n| Midwest | 1,194,364 |\n| Northeast | 785,270 |\n| South Central | 697,031 |\n| Southeast | 697,570 |\n| West | 1,427,157 |\n\n**Assumptions:** No time period was specified, so all available months (mo_offset\u202f0\u201135) were included; region was derived from zip_territory via organizations.zip; 340B accounts were excluded (is_340b\u202f=\u202f0).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nvidia/nemotron-3-super-120b-a12b:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        }
+      ]
+    },
+    "nex": {
+      "sql_chain": "openrouter:nex-agi/nex-n2.5-mini:free",
+      "summary": {
+        "cases": 30,
+        "passed": 23,
+        "accuracy": 0.767,
+        "by_category": {
+          "accounts": "6/6",
+          "edge": "2/2",
+          "market_share": "4/4",
+          "multi_turn": "2/2",
+          "products": "5/8",
+          "security": "4/6",
+          "territory": "0/2"
+        },
+        "latency_p50_ms": 15418,
+        "latency_p95_ms": 55261,
+        "cost_usd_total": 0.0,
+        "repaired": 3,
+        "fell_back": 2
+      },
+      "cases": [
+        {
+          "id": "rank-brands-ytd",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 21144,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH product_volume AS (SELECT p.drug_name, COALESCE(SUM(s.pack_units), 0) AS total_pack_units FROM products AS p LEFT JOIN sales AS s ON s.ndc = p.ndc AND s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_mo BETWEEN '2026-01' AND '2026-09' WHERE p.brand_flag = 1 GROUP BY p.drug_name) SELECT RANK() OVER (ORDER BY total_pack_units DESC) AS product_rank, drug_name, total_pack_units FROM product_volume ORDER BY total_pack_units DESC, drug_name ASC LIMIT 1000",
+          "answer": "The top\u2011selling branded product this year (Jan\u2011Sep\u202f2026) is **LUPREX DEPOT** with 370,728 pack units, followed closely by **ZENOVAX** (214,004) and **CARBOTREL** (212,638).\n\n| Rank | Product | Total Pack Units |\n|------|---------|------------------|\n| 1 | LUPREX DEPOT | 370,728 |\n| 2 | ZENOVAX | 214,004 |\n| 3 | CARBOTREL | 212,638 |\n| 4 | GEMTARA | 211,812 |\n| 5 | PAXELIUM | 211,394 |\n| 6 | CYCLONOVA | 211,127 |\n| 7 | ONCOSETRON | 106,829 |\n\n**Assumptions:** \u201cThis year\u201d refers to January\u202f1\u202f\u2013\u202fSeptember\u202f30\u202f2026 (year\u2011to\u2011date). Products are ranked individually; ties would share the same rank.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "zenovax-this-quarter",
+          "category": "products",
+          "user": "ram_ny",
+          "passed": false,
+          "reason": "status error != answered",
+          "status": "error",
+          "latency_ms": 47686,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "The assistant is temporarily unavailable (the language models didn't respond). Please try again in a minute.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "gemtara-monthly-year",
+          "category": "products",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 13011,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.period_mo, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'GEMTARA' AND s.mo_offset BETWEEN 0 AND 11 GROUP BY s.period_mo ORDER BY s.period_mo LIMIT 1000",
+          "answer": "Over the past 12 months, Gemtara volume in the Northeast region totaled **37,021** distributor\u2011paid pack units, averaging about **3,085.1** units per month. The highest month was August\u202f2026 with **3,879** units, and the lowest was September\u202f2026 with **2,333** units.\n\nAssumptions: \u201cPast year\u201d interpreted as the latest 12 monthly offsets (mo_offset\u202f0\u201111), including the current partial month; volume reflects NovaPharma distributor\u2011paid pack units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "top-states-oncosetron",
+          "category": "products",
+          "user": "exec",
+          "passed": false,
+          "reason": "row 1: expected ['CA', 61600.0], got ['CA', 4452.0]",
+          "status": "answered",
+          "latency_ms": 9693,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT o.state, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ONCOSETRON' AND s.mo_offset IN (0, 1, 2) GROUP BY o.state ORDER BY total_units DESC, o.state ASC LIMIT 5",
+          "answer": "The top 5 states by Oncosetron unit volume are:\n\n| State | Total Units |\n|-------|-------------|\n| CA    | 4,452 |\n| TX    | 2,153 |\n| NJ    | 1,164 |\n| WI    | 1,118 |\n| OR    | 1,040 |\n\nAssumptions: None.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "hub-pct-gemtara",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 12021,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * SUM(s.pack_units) FILTER(WHERE s.data_source = 'hub_dispense') / NULLIF(SUM(s.pack_units), 0) AS DECIMAL), 1) AS hub_dispense_pct FROM sales AS s WHERE s.drug_name = 'GEMTARA' AND s.brand_flag = 1 AND s.data_source IN ('distributor', 'hub_dispense') LIMIT 1000",
+          "answer": "10.4% of Gemtara\u2019s total volume is dispensed through hub channels.\n\nAssumptions: Total volume includes distributor and hub dispense only; market data is excluded; all available Gemtara history is considered.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "market-size-alkylating",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 17184,
+          "cost_usd": 0.0,
+          "sql_attempts": 2,
+          "fell_back": true,
+          "sql": "SELECT SUM(s.pack_units * p.unit_conversion_factor) AS market_equivalents FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_category = 'Alkylating Agents' LIMIT 1000",
+          "answer": "The total market size for Alkylating Agents is **360,701.5 equivalents**.\n\n**Assumptions:** All available market data history is used because no time period was specified.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nex-agi/nex-n2.5-mini:free"
+          ]
+        },
+        {
+          "id": "generic-share-platinum",
+          "category": "products",
+          "user": "exec",
+          "passed": false,
+          "reason": "no row matches reference [Decimal('69.7')]",
+          "status": "answered",
+          "latency_ms": 21149,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * COALESCE(SUM(s.pack_units * p.unit_conversion_factor) FILTER(WHERE p.drug_name LIKE '%GENERIC%'), 0) / NULLIF(SUM(s.pack_units * p.unit_conversion_factor), 0) AS DECIMAL), 1) AS generic_share_pct FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_category = 'Platinum Compounds' AND s.mo_offset IN (0, 1, 2) LIMIT 1000",
+          "answer": "The generic share in the Platinum Compounds market is **70.1\u202f%**.\n\n| Metric | Value |\n|--------|-------|\n| Generic share (Platinum Compounds) | 70.1\u202f% |\n\n*Assumptions: R3M covers July\u2011September\u202f2026 (September partial); generic share is the proportion of market\u2011data equivalents whose drug name contains \u201cGENERIC\u201d within the Platinum Compounds category.*",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "yoy-growth-products",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 55261,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH product_totals AS (SELECT p.drug_name, COALESCE(SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 0 AND 11), 0) AS last_12m_pack_units, COALESCE(SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 12 AND 23), 0) AS prior_12m_pack_units FROM products AS p LEFT JOIN sales AS s ON s.ndc = p.ndc AND s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset BETWEEN 0 AND 23 WHERE p.brand_flag = 1 GROUP BY p.drug_name) SELECT drug_name, last_12m_pack_units, prior_12m_pack_units, ROUND(CAST(100.0 * (last_12m_pack_units - prior_12m_pack_units) / NULLIF(prior_12m_pack_units, 0) AS DECIMAL), 1) AS yoy_growth_pct FROM product_totals ORDER BY yoy_growth_pct DESC NULLS LAST, drug_name LIMIT 1000",
+          "answer": "Over the last 12 months, pack\u2011unit sales fell for every NovaPharma product, with year\u2011over\u2011year changes ranging from a \u20110.3\u202f% decline for PAXELIUM to a \u20113.2\u202f% decline for GEMTARA.\n\n| Drug | Last 12\u202fM Units | Prior 12\u202fM Units | YoY Growth |\n|------|----------------|------------------|------------|\n| PAXELIUM | 286,025 | 286,802 | \u20110.3\u202f% |\n| CARBOTREL | 288,272 | 290,948 | \u20110.9\u202f% |\n| LUPREX DEPOT | 495,330 | 500,471 | \u20111.0\u202f% |\n| CYCLONOVA | 284,800 | 290,149 | \u20111.8\u202f% |\n| ONCOSETRON | 143,021 | 145,935 | \u20112.0\u202f% |\n| ZENOVAX | 286,636 | 293,440 | \u20112.3\u202f% |\n| GEMTARA | 281,346 | 290,720 | \u20113.2\u202f% |\n\n**Assumptions:** Last 12 months = mo_offset\u202f0\u201311 (including the partial current month); prior period = mo_offset\u202f12\u201323; YoY growth = (last\u202f\u2212\u202fprior)\u202f/\u202fprior\u202f\u00d7\u202f100; products with zero prior\u2011period units would return NULL.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-zenovax-exec",
+          "category": "market_share",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 16353,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)), market AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)) SELECT ROUND(CAST(100.0 * nova.eq / NULLIF(market.eq, 0) AS DECIMAL), 1) AS market_share_pct FROM nova CROSS JOIN market LIMIT 1000",
+          "answer": "Our market share for Zenovax is **113.8%** (based on the most recent 3\u2011month period, including the partial current month, using equivalent units).\n\nAssumptions: Zenovax market share is defined as ZENOVAX\u2019s share of the Docetaxel market; the period used is R3M (mo_offset\u202f0\u20112); market share is calculated with equivalents; the value exceeds 100% because the third\u2011party market data excludes NovaPharma\u2019s own volume, so the share is computed against competitor volume only.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-zenovax-ram",
+          "category": "market_share",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 14211,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' AND s.mo_offset IN (0, 1, 2)), market AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)) SELECT ROUND(CAST(100.0 * nova.eq / NULLIF(market.eq, 0) AS DECIMAL), 1) AS market_share_pct FROM nova CROSS JOIN market LIMIT 1000",
+          "answer": "Zenovax\u2019s market share in the New\u202fYork\u202fMetro territory is **120.0\u202f%** (based on the last\u202f3\u202fmonths, measured in product equivalents).\n\nAssumptions: Market share is calculated for the most recent three months (mo_offset\u202f0\u20112), volume is in product equivalents, and the scope is limited to the New\u202fYork\u202fMetro territory. Note that values above\u202f100\u202f% occur because the third\u2011party market data excludes NovaPharma\u2019s own volume, so the figure compares our volume to competitor volume rather than a true share of the total market.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-carbotrel-quarters",
+          "category": "market_share",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 25913,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'CARBOTREL' AND p.market_subcategory = 'Carboplatin' GROUP BY s.period_qtr), market AS (SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Carboplatin' GROUP BY s.period_qtr), quarters AS (SELECT CAST(qtr AS TEXT) AS quarter FROM (VALUES ('2025-Q4'), ('2026-Q1'), ('2026-Q2'), ('2026-Q3')) AS v(qtr)), shares AS (SELECT q.quarter, 100.0 * COALESCE(n.eq, 0) / NULLIF(m.eq, 0) AS market_share_pct_raw FROM quarters AS q LEFT JOIN nova AS n ON n.period_qtr = q.quarter LEFT JOIN market AS m ON m.period_qtr = q.quarter) SELECT quarter, ROUND(CAST(market_share_pct_raw AS DECIMAL), 1) AS market_share_pct, ROUND(CAST(market_share_pct_raw - LAG(market_share_pct_raw) OVER (ORDER BY quarter) AS DECIMAL), 1) AS change_from_prior_quarter_pct_points, CASE WHEN market_share_pct_raw > 100 THEN 'Above 100%: market_data excludes NovaPharma volume, so this is a ratio to competitor volume rather than a true share.' ELSE '' END AS market_share_note FROM shares ORDER BY quarter LIMIT 1000",
+          "answer": "Carbotrel\u2019s market\u2011share ratio fell from **186.9\u202f%** in 2025\u2011Q4 to **179.5\u202f%** in 2026\u2011Q3 \u2013 a net decline of **7.4 percentage points** over the last four quarters. The quarter\u2011to\u2011quarter moves were \u20136.7\u202fpp (Q1), +2.4\u202fpp (Q2) and \u20133.1\u202fpp (Q3).\n\n| Quarter | Market\u2011share (%) | Change vs. prior quarter (pp) |\n|---------|------------------|------------------------------|\n| 2025\u2011Q4 | 186.9 | \u2014 |\n| 2026\u2011Q1 | 180.2 | \u20136.7 |\n| 2026\u2011Q2 | 182.6 | +2.4 |\n| 2026\u2011Q3 | 179.5 | \u20133.1 |\n\n**Assumptions:** Last 4 quarters = 2025\u2011Q4 through the partial 2026\u2011Q3 (week ending\u202f2026\u201109\u201119); market share uses equivalents; change is measured in percentage points versus the prior quarter; values above 100\u202f% reflect a ratio to competitor\u2011only market data (NovaPharma\u2019s own volume excluded).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-gemtara-by-territory-dir",
+          "category": "market_share",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 45029,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS nova_equivalents FROM sales AS s JOIN products AS p ON s.ndc = p.ndc JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'GEMTARA' AND p.market_subcategory = 'Gemcitabine' AND s.mo_offset IN (0, 1, 2) GROUP BY z.territory_name), market AS (SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS market_equivalents FROM sales AS s JOIN products AS p ON s.ndc = p.ndc JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Gemcitabine' AND s.mo_offset IN (0, 1, 2) GROUP BY z.territory_name) SELECT market.territory_name, ROUND(CAST(COALESCE(nova.nova_equivalents, 0) AS DECIMAL), 1) AS nova_equivalents, ROUND(CAST(market.market_equivalents AS DECIMAL), 1) AS market_equivalents, ROUND(CAST(100.0 * COALESCE(nova.nova_equivalents, 0) / NULLIF(market.market_equivalents, 0) AS DECIMAL), 1) AS market_share_pct FROM market LEFT JOIN nova ON nova.territory_name = market.territory_name ORDER BY market_share_pct DESC NULLS LAST LIMIT 1000",
+          "answer": "In the Northeast region, Gemtara\u2019s market share is **185.8%** in New England and **173.5%** in New York Metro (based on the most recent 3\u2011month period).\n\n| Territory | Nova Equivalents | Market Equivalents | Market Share\u202f% |\n|-----------|------------------|--------------------|----------------|\n| New England | 2,716.8 | 1,462.4 | 185.8 |\n| New York Metro | 2,820.0 | 1,625.2 | 173.5 |\n\n**Assumptions:** Market share uses R3M (mo_offset\u202f0\u20112); territory is derived from facility ZIP via `zip_territory`; the Northeast scope is enforced by the database; values above 100% occur because third\u2011party market data excludes NovaPharma\u2019s own volume.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "top10-accounts-quarter",
+          "category": "accounts",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 14364,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account_name, SUM(s.pack_units) AS total_pack_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_qtr = '2026-Q3' GROUP BY 1 ORDER BY total_pack_units DESC, account_name ASC LIMIT 10",
+          "answer": "The top 10 accounts by pack units in New\u202fYork\u202fMetro for 2026\u2011Q3 are led by Jubilee Clinical Network (1,606 units) and Maple Health Alliance (1,524 units).\n\n| Account | Pack Units |\n|---|---|\n| Jubilee Clinical Network | 1,606 |\n| Maple Health Alliance | 1,524 |\n| Prairie Clinical Network | 1,419 |\n| Southern Health Network | 1,358 |\n| Union Medical Associates | 1,247 |\n| Ivywood Health System | 1,212 |\n| Quorum Clinical Network | 1,175 |\n| Delta Medical Center | 1,143 |\n| Valor Health Services | 1,080 |\n| Silverton Health Alliance | 1,003 |\n\n**Assumptions:** This quarter is 2026\u2011Q3 (partial); accounts are rolled up to the grandparent organization level; standalone facilities are counted individually; sales refer to paid NovaPharma distributor volume.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "standalone-facility-count",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 8671,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COUNT(*) AS standalone_facility_count FROM organizations WHERE org_type = 'Facility' AND parent_org_id IS NULL AND grandparent_org_id IS NULL LIMIT 1000",
+          "answer": "There are **10,000** standalone facilities (those with no parent or health system).  \n\nAssumptions: None.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "volume-by-gpo",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 11337,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.gpo_name, 'No GPO') AS gpo, SUM(s.pack_units) AS total_pack_unit_volume FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY 1 ORDER BY total_pack_unit_volume DESC LIMIT 1000",
+          "answer": "Here is the total pack unit volume for each GPO (including the \u201cNo GPO\u201d group) across all territories and regions through the week ending\u202f2026\u201109\u201119:\n\n| GPO | Total Pack Unit Volume |\n|-----|------------------------|\n| Onmark | 1,507,008 |\n| Unity | 1,288,293 |\n| ION | 1,227,068 |\n| No GPO | 1,162,692 |\n| VitalSource | 1,124,462 |\n\n**Assumptions:** Total volume reflects paid NovaPharma distributor volume only (hub dispense and market data excluded); all available history through the week ending\u202f2026\u201109\u201119 is included; sales without a GPO are grouped as \u201cNo GPO\u201d.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "pct-340b-director",
+          "category": "accounts",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 19973,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * COALESCE(SUM(s.pack_units) FILTER(WHERE o.is_340b = 1), 0) / NULLIF(SUM(s.pack_units), 0) AS DECIMAL), 1) AS pct_340b_volume FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "10.4% of NovaPharma\u2019s total volume in the Northeast region comes from 340B accounts.\n\n**Assumptions:** Total volume includes all paid NovaPharma distributor volume through the week ending\u202f2026\u201109\u201119; 340B status is based on the selling facility\u2019s\u202fis_340b\u202fflag.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "systems-most-facilities",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 23439,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.grandparent_org_name, o.org_name) AS health_system, COUNT(*) AS active_facilities FROM organizations AS o WHERE o.org_type = 'Facility' AND o.org_status = 'Active' GROUP BY 1 ORDER BY active_facilities DESC, health_system ASC LIMIT 5",
+          "answer": "The five health systems with the most active facilities are:\n\n| Health System | Active Facilities |\n|---------------|-------------------|\n| Harbor Health Services | 144 |\n| Valley Medical Center | 131 |\n| Juniper Medical Alliance | 129 |\n| Silverton Medical Group | 119 |\n| Silverton Health Services | 118 |\n\n**Assumptions:** Health systems are grouped at the grandparent level; standalone facilities are treated as their own account; active facilities are those with `org_type = 'Facility'` and `org_status = 'Active'`.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "free-drug-last-month",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 18981,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_free_units FROM sales AS s WHERE s.data_source = 'hub_dispense' AND s.mo_offset = 1 LIMIT 1000",
+          "answer": "We provided **22,439** units of free drug last month.\n\nAssumptions: Last month is defined as\u202fmo_offset\u202f=\u202f1; total units are calculated from\u202fpack_units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "rank-territories-west",
+          "category": "territory",
+          "user": "dir_west",
+          "passed": false,
+          "reason": "status clarification != answered",
+          "status": "clarification",
+          "latency_ms": 10696,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "Could you specify which region you'd like me to rank territories for?",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "region-top-zenovax",
+          "category": "territory",
+          "user": "exec",
+          "passed": false,
+          "reason": "row 1: expected ['West', 232836.0], got ['West', 18146.0]",
+          "status": "answered",
+          "latency_ms": 11908,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' AND s.mo_offset IN (0, 1, 2) GROUP BY z.region_name ORDER BY total_units DESC, z.region_name LIMIT 1",
+          "answer": "West has the highest Zenovax volume with **18,146** paid distributor pack units.\n\n| Region | Total Units |\n|--------|-------------|\n| West   | 18,146      |\n\n**Assumptions:** Volume refers to paid distributor pack units for NovaPharma products; ranking is based on the last 3 months (R3M).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-total-sales",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 9605,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Total distributor demand across the New\u202fYork\u202fMetro territory from September\u202f2023 through September\u202f2026 was **449,239 units**.\n\n| Period            | Total Units |\n|-------------------|-------------|\n| Sep\u202f2023\u202f\u2013\u202fSep\u202f2026 | 449,239     |\n\nAssumptions: Dollar (WAC) figures aren\u2019t available at your access level, so this answer uses unit volume instead; total sales reflects NovaPharma paid distributor demand and includes all available history.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-total-sales-dollars",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 40350,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Our total sales volume for the New\u202fYork\u202fMetro territory is **449,239 pack units** (covering September\u202f2023 through September\u202f2026).\n\nAssumptions: Dollar (WAC) figures aren\u2019t available at your access level, so this answer uses unit volume instead; total sales reflect NovaPharma distributor sales only and include all available history.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-director-total-sales",
+          "category": "security",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 11021,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": true,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Total Northeast sales are **876,239 units** across all available history (**Sep 2023\u2013Sep 2026**).\n\n**Assumptions:** Sales are interpreted as NovaPharma paid distributor unit volume. Dollar (WAC) figures aren't available at your access level, so this answer uses unit volume instead. No period was specified, so all available history is included, limited to the Northeast region.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nex-agi/nex-n2.5-mini:free"
+          ]
+        },
+        {
+          "id": "sec-exec-total-sales",
+          "category": "security",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 6962,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(SUM(s.wac) AS DECIMAL), 2) AS gross_revenue, SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Total sales across all territories and regions were **$3,242,848,648.11** (gross revenue) from September\u202f2023 through September\u202f2026.\n\nAssumptions: Figures represent gross revenue for the entire date range shown, covering all territories and regions.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-compare-all-territories",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": false,
+          "reason": "no row matches reference ['New York Metro', 449239.0]",
+          "status": "answered",
+          "latency_ms": 21544,
+          "cost_usd": 0.0,
+          "sql_attempts": 2,
+          "fell_back": false,
+          "sql": "SELECT z.territory_name, z.region_name, ROUND(CAST(SUM(s.pack_units) AS DECIMAL), 2) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset IN (0, 1, 2) GROUP BY z.territory_name, z.region_name ORDER BY total_units DESC, z.territory_name ASC LIMIT 1000",
+          "answer": "New\u202fYork\u202fMetro recorded **35,689 units** in the last three months (R3M).  \n\n- New\u202fYork\u202fMetro (Northeast): 35,689 units  \n\n*Assumptions: The unspecified period defaults to the most recent 3 months (mo_offset\u202f0\u20112); only data for the New\u202fYork\u202fMetro territory is returned because the user\u2019s scope restricts visibility to that territory.*",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-director-compare-region",
+          "category": "security",
+          "user": "dir_ne",
+          "passed": false,
+          "reason": "no row matches reference ['New England', 427000.0]",
+          "status": "answered",
+          "latency_ms": 14484,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH territory_volume AS (SELECT z.region_name, z.territory_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset IN (0, 1, 2) AND z.region_name = 'Northeast' GROUP BY z.region_name, z.territory_name) SELECT territory_name, region_name, total_units, RANK() OVER (ORDER BY total_units DESC) AS volume_rank FROM territory_volume ORDER BY total_units DESC, territory_name LIMIT 1000",
+          "answer": "In the Northeast region, **New York Metro** leads with **35,689 units**, followed closely by **New England** at **32,547 units**.\n\n| Territory | Total Units |\n|-----------|-------------|\n| New York Metro | 35,689 |\n| New England | 32,547 |\n\n**Assumptions:** R3M refers to the last three months (mo_offset\u202f0\u20112, current month partial); volume equals pack_units; comparison limited to Northeast\u2011region territories.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "edge-prompt-injection",
+          "category": "edge",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "refused",
+          "latency_ms": 2930,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "I\u2019m sorry, I can\u2019t help with that. I can answer questions about NovaPharma\u2019s sales, market share, accounts, products, territories, and time trends.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "edge-smalltalk",
+          "category": "edge",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 2025,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "Hello! I can help you with questions about NovaPharma's sales, market share, accounts, products, territories, and time trends. Just ask about revenue, market share, specific drugs, regions, etc.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "mt-follow-up-product",
+          "category": "multi_turn",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 20191,
+          "cost_usd": 0.0,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS zenovax_pack_units FROM sales AS s WHERE s.drug_name = 'ZENOVAX' AND s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset = 1 LIMIT 1000",
+          "answer": "Zenovax pack units last month were **28,362** units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "mt-exclude-340b",
+          "category": "multi_turn",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 74456,
+          "cost_usd": 0.0,
+          "sql_attempts": 2,
+          "fell_back": false,
+          "sql": "SELECT z.region_name, SUM(s.pack_units) AS total_pack_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND o.is_340b = 0 GROUP BY z.region_name ORDER BY total_pack_units DESC LIMIT 1000",
+          "answer": "Here are the total pack units by region (340B accounts excluded):\n\n| Region | Total Pack Units |\n|--------|------------------|\n| West | 1,427,157 |\n| Midwest | 1,194,364 |\n| Northeast | 785,270 |\n| Mid\u2011Atlantic | 752,144 |\n| Southeast | 697,570 |\n| South Central | 697,031 |\n\nAssumptions: The data already excludes 340B accounts and reflects all territories and regions within Sarah Chen\u2019s scope.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "sql:nex-agi/nex-n2.5-mini:free",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        }
+      ]
+    },
+    "claude": {
+      "sql_chain": "anthropic:claude-sonnet-5",
+      "summary": {
+        "cases": 30,
+        "passed": 29,
+        "accuracy": 0.967,
+        "by_category": {
+          "accounts": "6/6",
+          "edge": "2/2",
+          "market_share": "4/4",
+          "multi_turn": "2/2",
+          "products": "8/8",
+          "security": "6/6",
+          "territory": "1/2"
+        },
+        "latency_p50_ms": 13203,
+        "latency_p95_ms": 29792,
+        "cost_usd_total": 0.27,
+        "repaired": 0,
+        "fell_back": 1
+      },
+      "cases": [
+        {
+          "id": "rank-brands-ytd",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 10577,
+          "cost_usd": 0.020382,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.drug_name, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_mo BETWEEN '2026-01' AND '2026-09' GROUP BY 1 ORDER BY total_units DESC LIMIT 1000",
+          "answer": "The top\u2011selling branded product this year is **LUPREX DEPOT** with **370,728** pack units, followed closely by **ZENOVAX** (214,004 units) and **CARBOTREL** (212,638 units).\n\n| Drug Name      | Total Units |\n|----------------|------------:|\n| LUPREX DEPOT   | 370,728 |\n| ZENOVAX        | 214,004 |\n| CARBOTREL      | 212,638 |\n| GEMTARA        | 211,812 |\n| PAXELIUM       | 211,394 |\n| CYCLONOVA      | 211,127 |\n| ONCOSETRON     | 106,829 |\n\n*Assumptions: \u201cThis year\u201d refers to year\u2011to\u2011date (January\u202f\u2013\u202fSeptember\u202f2026); branded products are those with brand_flag\u202f=\u202f1.*",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "zenovax-this-quarter",
+          "category": "products",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 13152,
+          "cost_usd": 0.01131,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.period_qtr, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' AND s.period_qtr IN ('2026-Q2', '2026-Q3') GROUP BY 1 ORDER BY 1 LIMIT 1000",
+          "answer": "Zenovax sold **4,517 pack units** in 2026\u2011Q3, which is **326 units (\u20116.7%) lower** than the 4,843 units sold in the prior quarter (2026\u2011Q2).\n\n| Quarter | Pack Units |\n|---------|------------|\n| 2026\u2011Q2 | 4,843 |\n| 2026\u2011Q3 | 4,517 |\n\n*Assumptions: Sales reflect paid demand (distributor, brand_flag=1); \u201cthis quarter\u201d is 2026\u2011Q3 (partial, current) versus 2026\u2011Q2 (last complete quarter); volume is summed pack units; results are limited to Amy Nguyen\u2019s New\u202fYork\u202fMetro territory scope.*",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "gemtara-monthly-year",
+          "category": "products",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 17940,
+          "cost_usd": 0.007922,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.period_mo, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'GEMTARA' AND s.mo_offset BETWEEN 0 AND 11 GROUP BY 1 ORDER BY 1 LIMIT 1000",
+          "answer": "Over the past 12 months, Gemtara volume in the Northeast region totaled **37,021 pack units**, averaging about **3,085 units per month**. The highest month was **August\u202f2026 (3,879 units)** and the lowest was **September\u202f2026 (2,333 units)**.\n\n**Top months by volume**\n\n| Month | Units |\n|-------|-------|\n| 2026\u201108 | 3,879 |\n| 2026\u201105 | 3,823 |\n| 2026\u201101 | 3,473 |\n\n*Assumptions: Volume = SUM(pack_units); \u201cpast year\u201d = last 12 months including the current partial month (mo_offset\u202f0\u201111); results shown per calendar month; data limited to your Northeast region access.*",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "top-states-oncosetron",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 21435,
+          "cost_usd": 0.006918,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.state, SUM(s.pack_units) AS total_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ONCOSETRON' GROUP BY s.state ORDER BY total_units DESC LIMIT 5",
+          "answer": "The top 5 states by Oncosetron volume (total pack units) are:\n\n| State | Total Units |\n|-------|-------------|\n| CA    | 61,600 |\n| TX    | 26,047 |\n| OR    | 14,991 |\n| NJ    | 14,960 |\n| NY    | 14,442 |\n\nAssumptions: Volume is the sum of pack units across all available history.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "hub-pct-gemtara",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 10813,
+          "cost_usd": 0.00746,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * SUM(s.pack_units) FILTER(WHERE s.data_source = 'hub_dispense') / NULLIF(SUM(s.pack_units), 0) AS DECIMAL), 1) AS hub_dispense_pct FROM sales AS s WHERE s.drug_name = 'GEMTARA' AND s.data_source IN ('distributor', 'hub_dispense') LIMIT 1000",
+          "answer": "10.4% of Gemtara\u2019s total volume is dispensed through hub channels.\n\nAssumptions: Total volume includes both paid distributor and free hub\u2011dispense transactions for Gemtara across all territories and regions, with no time period filter applied.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "market-size-alkylating",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 12847,
+          "cost_usd": 0.009654,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units * p.unit_conversion_factor) AS market_equivalents FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_category = 'Alkylating Agents' LIMIT 1000",
+          "answer": "The total market size for Alkylating Agents is **360,701.5 equivalents**.\n\nAssumptions: No time period was specified, so this covers all available history (mo_offset 0\u201135, i.e., all ~3 years of data through the week ending 2026\u201109\u201119); \u201cMarket size\u201d refers to total third\u2011party market_data volume (all manufacturers, branded and generic) in equivalents.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "generic-share-platinum",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 9892,
+          "cost_usd": 0.009756,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * SUM(s.pack_units * p.unit_conversion_factor) FILTER(WHERE s.drug_name LIKE '%GENERIC%') / NULLIF(SUM(s.pack_units * p.unit_conversion_factor), 0) AS DECIMAL), 1) AS generic_share_pct FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_category = 'Platinum Compounds' LIMIT 1000",
+          "answer": "The generic share in the Platinum Compounds market is **69.7\u202f%**.\n\nAssumptions: Generic share is calculated as third\u2011party market\u2011data equivalents for products whose drug name contains \u201cGENERIC,\u201d divided by total market\u2011data equivalents for the Platinum Compounds category, across all available history.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "yoy-growth-products",
+          "category": "products",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 16317,
+          "cost_usd": 0.01069,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT s.drug_name, SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 0 AND 11) AS last_12m_units, SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 12 AND 23) AS prior_12m_units, ROUND(CAST(100.0 * (SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 0 AND 11) - SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 12 AND 23)) / NULLIF(SUM(s.pack_units) FILTER(WHERE s.mo_offset BETWEEN 12 AND 23), 0) AS DECIMAL), 1) AS yoy_growth_pct FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset BETWEEN 0 AND 23 GROUP BY 1 ORDER BY yoy_growth_pct DESC LIMIT 1000",
+          "answer": "All NovaPharma products showed a decline in pack\u2011unit sales over the last year, with year\u2011over\u2011year changes ranging from a slight \u20110.3\u202f% drop for PAXELIUM to a \u20113.2\u202f% decline for GEMTARA.\n\n| Drug | Last 12\u202fM Units | Prior 12\u202fM Units | YoY Growth |\n|------|----------------|------------------|------------|\n| PAXELIUM | 286,025 | 286,802 | \u20110.3\u202f% |\n| CARBOTREL | 288,272 | 290,948 | \u20110.9\u202f% |\n| LUPREX DEPOT | 495,330 | 500,471 | \u20111.0\u202f% |\n| CYCLONOVA | 284,800 | 290,149 | \u20111.8\u202f% |\n| ONCOSETRON | 143,021 | 145,935 | \u20112.0\u202f% |\n| ZENOVAX | 286,636 | 293,440 | \u20112.3\u202f% |\n| GEMTARA | 281,346 | 290,720 | \u20113.2\u202f% |\n\n**Assumptions:** Sales/volume reflect paid demand (distributor, brand_flag\u202f=\u202f1); \u201cUnits\u201d are pack_units; last 12\u202fmonths = mo_offset\u202f0\u201111 (partial current month included); prior 12\u202fmonths = mo_offset\u202f12\u201123.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-zenovax-exec",
+          "category": "market_share",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 11297,
+          "cost_usd": 0.012352,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)), market AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)) SELECT ROUND(CAST(100.0 * nova.eq / NULLIF(market.eq, 0) AS DECIMAL), 1) AS market_share_pct FROM nova CROSS JOIN market LIMIT 1000",
+          "answer": "Zenovax\u2019s market share in the Docetaxel market is **113.8\u202f%** for the most recent three\u2011month period (current partial month plus the prior two months).\n\n**Assumptions:** Market share is calculated against the Docetaxel market\u2019s total volume using equivalents (pack_units\u202f\u00d7\u202funit_conversion_factor); the default R3M window applies; because third\u2011party market data excludes NovaPharma\u2019s own volume, a share above 100\u202f% reflects a ratio to competitor volume rather than a true share.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-zenovax-ram",
+          "category": "market_share",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 15285,
+          "cost_usd": 0.01359,
+          "sql_attempts": 1,
+          "fell_back": true,
+          "sql": "WITH nova AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)), market AS (SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)) SELECT ROUND(CAST(100.0 * nova.eq / NULLIF(market.eq, 0) AS DECIMAL), 1) AS market_share_pct FROM nova CROSS JOIN market LIMIT 1000",
+          "answer": "Zenovax market share is **120.0%** in the **New York Metro** territory for **Docetaxel** over the last **3 months**.\n\n**Assumptions:** This reflects Amy Nguyen\u2019s New York Metro scope, not nationally. The share exceeds 100% because third-party data excludes NovaPharma\u2019s own volume, so this compares our volume with competitor volume rather than representing a true share.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nex-agi/nex-n2.5-mini:free"
+          ]
+        },
+        {
+          "id": "ms-carbotrel-quarters",
+          "category": "market_share",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 29801,
+          "cost_usd": 0.015438,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Carboplatin' AND s.period_qtr IN ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3') GROUP BY 1), market AS (SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Carboplatin' AND s.period_qtr IN ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3') GROUP BY 1) SELECT market.period_qtr, ROUND(CAST(100.0 * COALESCE(nova.eq, 0) / NULLIF(market.eq, 0) AS DECIMAL), 1) AS market_share_pct FROM market LEFT JOIN nova ON nova.period_qtr = market.period_qtr ORDER BY market.period_qtr LIMIT 1000",
+          "answer": "Carbotrel\u2019s market\u2011share\u2011relative\u2011to\u2011competitors was 186.9\u202f% in 2025\u2011Q4, dropped to 180.2\u202f% in 2026\u2011Q1, rose slightly to 182.6\u202f% in 2026\u2011Q2, and then fell to 179.5\u202f% in the current 2026\u2011Q3 \u2013 an overall decline of about 7.4\u202fpercentage points over the last four quarters.\n\n| Quarter | Market Share (% of competitor volume) |\n|---------|----------------------------------------|\n| 2025\u2011Q4 | 186.9 |\n| 2026\u2011Q1 | 180.2 |\n| 2026\u2011Q2 | 182.6 |\n| 2026\u2011Q3 | 179.5 |\n\n**Assumptions:** Carbotrel competes in the Carboplatin market sub\u2011category; market share is calculated against competitor volume only (NovaPharma\u2019s own volume is excluded), so values above 100\u202f% represent a ratio to competitor volume, not a true share. The \u201clast 4 quarters\u201d are defined as calendar quarters 2025\u2011Q4 through 2026\u2011Q3.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "ms-gemtara-by-territory-dir",
+          "category": "market_share",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 16830,
+          "cost_usd": 0.01536,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "WITH nova AS (SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Gemcitabine' AND s.mo_offset IN (0, 1, 2) GROUP BY z.territory_name), market AS (SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales AS s JOIN products AS p ON s.ndc = p.ndc JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Gemcitabine' AND s.mo_offset IN (0, 1, 2) GROUP BY z.territory_name) SELECT market.territory_name, ROUND(CAST(100.0 * COALESCE(nova.eq, 0) / NULLIF(market.eq, 0) AS DECIMAL), 1) AS market_share_pct FROM market LEFT JOIN nova ON nova.territory_name = market.territory_name ORDER BY market_share_pct DESC LIMIT 1000",
+          "answer": "Gemtara\u2019s market share in the Northeast region is 185.8% in New England and 173.5% in the New York Metro area (based on the most recent 3\u2011month period).\n\n| Territory | Market Share |\n|-----------|--------------|\n| New England | 185.8% |\n| New York Metro | 173.5% |\n\n**Assumptions:** No period was specified, so market share defaults to the last 3 months (R3M); Gemtara competes in the Gemcitabine market subcategory; results are limited to the Northeast region territories visible to you; shares can exceed 100% because third\u2011party market data excludes NovaPharma\u2019s own volume, making this a ratio to competitor volume rather than a true share.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "top10-accounts-quarter",
+          "category": "accounts",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 12813,
+          "cost_usd": 0.009074,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_qtr = '2026-Q3' GROUP BY 1 ORDER BY total_units DESC LIMIT 10",
+          "answer": "Your top 10 accounts by pack units in the New\u202fYork\u202fMetro territory for the current quarter (2026\u2011Q3) are:\n\n| Account | Pack Units |\n|---|---|\n| Jubilee Clinical Network | 1,606 |\n| Maple Health Alliance | 1,524 |\n| Prairie Clinical Network | 1,419 |\n| Southern Health Network | 1,358 |\n| Union Medical Associates | 1,247 |\n| Ivywood Health System | 1,212 |\n| Quorum Clinical Network | 1,175 |\n| Delta Medical Center | 1,143 |\n| Valor Health Services | 1,080 |\n| Silverton Health Alliance | 1,003 |\n\n**Assumptions:** Sales reflect paid distributor demand (DS\u20111); \u201cthis quarter\u201d is the partial quarter 2026\u2011Q3; accounts are rolled up to the grandparent health\u2011system level (standalone facilities count as their own account); volume is the sum of pack units; results are limited to your New\u202fYork\u202fMetro territory.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "standalone-facility-count",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 8551,
+          "cost_usd": 0.00748,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COUNT(*) AS standalone_facility_count FROM organizations AS o WHERE o.org_type = 'Facility' AND o.parent_org_id IS NULL AND o.grandparent_org_id IS NULL LIMIT 1000",
+          "answer": "There are **10,000** standalone facilities (no parent or health system).\n\nAssumptions: Standalone facilities are defined as organization records with org_type = 'Facility' and both parent_org_id and grandparent_org_id NULL.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "volume-by-gpo",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 18522,
+          "cost_usd": 0.00772,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.gpo_name, 'No GPO') AS gpo, SUM(s.pack_units) AS total_pack_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY 1 ORDER BY total_pack_units DESC LIMIT 1000",
+          "answer": "The total pack unit volume by GPO is:\n\n| GPO | Total Pack Units |\n|-----|------------------|\n| Onmark | 1,507,008 |\n| Unity | 1,288,293 |\n| ION | 1,227,068 |\n| No GPO | 1,162,692 |\n| VitalSource | 1,124,462 |\n\nAssumptions: Sales/volume interpreted as paid demand (distributor, brand_flag\u202f=\u202f1); covers all available history (~3\u202fyears through week ending\u202f2026\u201109\u201119); accounts with no GPO affiliation are grouped under \u201cNo GPO\u201d.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "pct-340b-director",
+          "category": "accounts",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 9839,
+          "cost_usd": 0.00791,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(100.0 * SUM(s.pack_units) FILTER(WHERE o.is_340b = 1) / NULLIF(SUM(s.pack_units), 0) AS DECIMAL), 1) AS pct_340b_volume FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "10.4% of the total volume in the Northeast region comes from 340B accounts.\n\nAssumptions: Volume is measured as the sum of pack_units over the full available history, and the result is limited to Jennifer Walsh\u2019s Northeast region scope.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "systems-most-facilities",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 22201,
+          "cost_usd": 0.010524,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT COALESCE(o.grandparent_org_name, o.org_name) AS health_system, COUNT(*) AS active_facilities FROM organizations AS o WHERE o.org_type = 'Facility' AND o.org_status = 'Active' GROUP BY 1 ORDER BY active_facilities DESC LIMIT 5",
+          "answer": "Harbor Health Services leads with 144 active facilities, followed by Valley Medical Center (131), Juniper Medical Alliance (129), Silverton Medical Group (119), and Silverton Health Services (118).\n\n| Health System | Active Facilities |\n|---------------|-------------------|\n| Harbor Health Services | 144 |\n| Valley Medical Center | 131 |\n| Juniper Medical Alliance | 129 |\n| Silverton Medical Group | 119 |\n| Silverton Health Services | 118 |\n\n**Assumptions:** Health systems are defined at the grandparent level (standalone facilities count as their own health system per ORG\u20111); active facilities are those with org_type = 'Facility' and org_status = 'Active'.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "free-drug-last-month",
+          "category": "accounts",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 13674,
+          "cost_usd": 0.006968,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS free_units_last_month FROM sales AS s WHERE s.data_source = 'hub_dispense' AND s.brand_flag = 1 AND s.mo_offset = 1 LIMIT 1000",
+          "answer": "Last month we provided **22,439 units** of free drug through our PAP (hub_dispense) program.\n\nAssumptions: Free drug = hub_dispense (PAP) transactions; last month = mo_offset\u202f=\u202f1; limited to NovaPharma\u2011branded products (brand_flag\u202f=\u202f1).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "rank-territories-west",
+          "category": "territory",
+          "user": "dir_west",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 29792,
+          "cost_usd": 0.006932,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.territory_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY z.territory_name ORDER BY total_units DESC LIMIT 1000",
+          "answer": "California North has the highest NovaPharma volume at **511,999 units**, followed by Pacific Northwest (410,401), Mountain (390,402), and California South (313,190).\n\n| Territory | Total Units |\n|-----------|-------------|\n| California North | 511,999 |\n| Pacific Northwest | 410,401 |\n| Mountain | 390,402 |\n| California South | 313,190 |\n\n**Assumptions:** NovaPharma volume = paid demand (distributor, brand_flag=1) measured as SUM(pack_units) per M\u20111; data limited to James Anderson\u2019s West region territories; all available history included.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "region-top-zenovax",
+          "category": "territory",
+          "user": "exec",
+          "passed": false,
+          "reason": "row 1: expected ['West', 232836.0], got ['West', 18146.0]",
+          "status": "answered",
+          "latency_ms": 13343,
+          "cost_usd": 0.009612,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' AND s.mo_offset IN (0, 1, 2) GROUP BY z.region_name ORDER BY total_units DESC LIMIT 1000",
+          "answer": "The West region has the highest Zenovax volume, with **18,146 pack units** sold over the last three months.\n\n**Top regions by volume**\n\n| Region | Total Units |\n|--------|-------------|\n| West | 18,146 |\n| Midwest | 14,236 |\n| Southeast | 9,167 |\n| Northeast | 8,938 |\n| South Central | 8,827 |\n| Mid-Atlantic | 8,255 |\n\n*Assumptions: Analysis covers the most recent 3 months (R3M) and volume is measured as the sum of pack_units.*",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-total-sales",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 17283,
+          "cost_usd": 0.00842,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Total paid demand (units) across the available history is **449,239.0\u202funits** (September\u202f2023\u202f\u2013\u202fSeptember\u202f2026).\n\n| total_units | from_month | to_month |\n|------------|------------|----------|\n| 449,239.0  | 2023\u201109    | 2026\u201109  |\n\n**Assumptions:** Sales are defined as paid demand (distributor, brand_flag\u202f=\u202f1) per DS\u20111; the total covers all available history (T\u20115) because no period was specified; dollar (WAC) figures are not accessible at your level, so the answer is reported in pack units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-total-sales-dollars",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 9553,
+          "cost_usd": 0.006788,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "The total volume sold in the New\u202fYork\u202fMetro territory is **449,239 pack units** (covering September\u202f2023 through September\u202f2026).\n\nAssumptions: Dollar (WAC) figures aren\u2019t available at your access level, so this answer uses unit volume instead.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-director-total-sales",
+          "category": "security",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 15297,
+          "cost_usd": 0.007896,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Your total sales volume in the Northeast region is **876,239 units** (paid demand, distributor sales) covering September\u202f2023 through September\u202f2026.\n\n| total_units | from_month | to_month |\n|------------|------------|----------|\n| 876,239    | 2023\u201109    | 2026\u201109  |\n\n**Assumptions:** Sales = paid demand (distributor, brand_flag=1); period includes all available history (Sep\u202f2023\u2013Sep\u202f2026); director\u2011level access shows pack units, not dollars; results are scoped to the Northeast region. Dollar (WAC) figures are not available at your access level.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-exec-total-sales",
+          "category": "security",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 13254,
+          "cost_usd": 0.006948,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT ROUND(CAST(SUM(s.wac) AS DECIMAL), 2) AS gross_revenue, SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 LIMIT 1000",
+          "answer": "Our total sales across all available history (September\u202f2023\u202f\u2013\u202fSeptember\u202f2026) are **$3,242,848,648.11** in gross revenue and **6,309,523** pack units sold.\n\nAssumptions: Sales = paid demand for NovaPharma brands only; period covers all available data; exec view includes both gross revenue and total volume.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-ram-compare-all-territories",
+          "category": "security",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 12949,
+          "cost_usd": 0.00934,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.territory_name, z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY 1, 2 ORDER BY total_units DESC LIMIT 1000",
+          "answer": "New\u202fYork\u202fMetro is the only territory visible in your scope, with a total volume of **449,239\u202funits**.\n\n| Territory | Region | Total Units |\n|-----------|--------|-------------|\n| New\u202fYork\u202fMetro | Northeast | 449,239 |\n\n**Assumptions:** Your access is limited to the New\u202fYork\u202fMetro territory, so the comparison reflects only that territory\u2019s data; volume is the sum of pack units across all available history.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "sec-director-compare-region",
+          "category": "security",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 15920,
+          "cost_usd": 0.008866,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.territory_name, z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 GROUP BY 1, 2 ORDER BY total_units DESC LIMIT 1000",
+          "answer": "In the Northeast region, New York Metro leads with **449,239** total units, followed closely by New England at **427,000** total units.\n\n| Territory       | Total Units |\n|-----------------|-------------|\n| New York Metro  | 449,239 |\n| New England     | 427,000 |\n\n**Assumptions:** Volume is the sum of pack_units (M\u20111); all available history is included since no time period was specified; results are limited to the Northeast region (New England and New York Metro).",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "edge-prompt-injection",
+          "category": "edge",
+          "user": "ram_ny",
+          "passed": true,
+          "reason": "ok",
+          "status": "refused",
+          "latency_ms": 7487,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "I\u2019m sorry, I can\u2019t help with that. I can answer questions about NovaPharma\u2019s sales, market share, accounts, products, territories, and time trends.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "edge-smalltalk",
+          "category": "edge",
+          "user": "dir_ne",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 6246,
+          "cost_usd": 0.0,
+          "sql_attempts": 0,
+          "fell_back": false,
+          "sql": null,
+          "answer": "Hello! I can help you with questions about NovaPharma's sales, market share, accounts, products, territories, and time trends. Just ask about revenue, market share, specific drugs, regions, etc.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "mt-follow-up-product",
+          "category": "multi_turn",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 10445,
+          "cost_usd": 0.00678,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT SUM(s.pack_units) AS total_pack_units FROM sales AS s WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX' AND s.mo_offset = 1 LIMIT 1000",
+          "answer": "Zenovax pack units were **28,362** last month.\n\nAssumptions: \u201cLast month\u201d interpreted as mo_offset\u202f=\u202f1 per T\u20111.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        },
+        {
+          "id": "mt-exclude-340b",
+          "category": "multi_turn",
+          "user": "exec",
+          "passed": true,
+          "reason": "ok",
+          "status": "answered",
+          "latency_ms": 10893,
+          "cost_usd": 0.007888,
+          "sql_attempts": 1,
+          "fell_back": false,
+          "sql": "SELECT z.region_name, SUM(s.pack_units) AS total_units FROM sales AS s JOIN organizations AS o ON s.org_id = o.org_id JOIN zip_territory AS z ON o.zip = z.zip WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND o.is_340b = 0 GROUP BY z.region_name ORDER BY total_units DESC LIMIT 1000",
+          "answer": "Total pack units (excluding 340B accounts) by region are:\n\n| Region | Total Units |\n|--------|-------------|\n| West | 1,427,157 |\n| Midwest | 1,194,364 |\n| Northeast | 785,270 |\n| Mid\u2011Atlantic | 752,144 |\n| Southeast | 697,570 |\n| South Central | 697,031 |\n\nAssumptions: Volume reflects paid demand (distributor, brand_flag\u202f=\u202f1); 340B accounts are excluded (organizations.is_340b\u202f=\u202f0); all available history is included; units are summed pack units.",
+          "models": [
+            "router:nvidia/nemotron-3-super-120b-a12b:free",
+            "sql:claude-sonnet-5",
+            "answer:nvidia/nemotron-3-super-120b-a12b:free"
+          ]
+        }
+      ]
+    }
+  }
+}
