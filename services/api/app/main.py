@@ -9,11 +9,15 @@ from fastapi import FastAPI
 from app.api import health
 from app.auth import router as auth
 from app.auth.repository import sync_demo_credentials
+from app.chat import router as chat
+from app.chat.repository import ChatRepository
+from app.chat.service import ChatService
 from app.core.config import Settings, get_settings
 from app.db.engine import build_engine
 from app.db.executor import QueryExecutor
 from app.knowledge.base import init_knowledge
 from app.llm.factory import build_router
+from app.nl2sql.pipeline import Pipeline
 
 log = logging.getLogger("app")
 
@@ -51,6 +55,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.knowledge = await init_knowledge(
             app.state.engine, settings.knowledge_docs_dir, settings.embed_cache_dir
         )
+        app.state.chat = None  # the assistant needs both an LLM and the knowledge layer
+        if app.state.llm is not None and app.state.knowledge is not None:
+            pipeline = Pipeline(
+                app.state.llm,
+                app.state.knowledge,
+                app.state.executor,
+                app.state.engine,
+                max_rows=settings.query_row_limit,
+            )
+            app.state.chat = ChatService(ChatRepository(app.state.engine), pipeline)
         if settings.demo_password:
             # Non-fatal, like the knowledge layer: if the database is briefly unreachable at boot
             # (e.g. RDS still starting during a deploy), serve /health instead of crash-looping.
@@ -74,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.dependency_overrides[get_settings] = lambda: settings
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(chat.router)
     return app
 
 
