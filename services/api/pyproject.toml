@@ -13,6 +13,8 @@ dependencies = [
     "bcrypt>=4.2",
     "pyjwt>=2.9",
     "sqlglot>=26",
+    "anthropic>=1.8.0",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]

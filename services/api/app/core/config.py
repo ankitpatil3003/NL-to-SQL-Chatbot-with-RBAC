@@ -27,6 +27,22 @@ class Settings(BaseSettings):
     query_timeout_ms: int = 15_000
     query_row_limit: int = 1_000
 
+    # --- LLM ---------------------------------------------------------------------------------
+    # Comma-separated provider:model targets, tried in order (router.py). Per-task overrides:
+    # LLM_CHAIN_SQL, LLM_CHAIN_ROUTER, LLM_CHAIN_REWRITE, LLM_CHAIN_ANSWER, LLM_CHAIN_TITLE.
+    llm_chain: str = (
+        "openrouter:nvidia/nemotron-3-super-120b-a12b:free,openrouter:qwen/qwen3.8-27b:free"
+    )
+    llm_chain_sql: str | None = None
+    llm_chain_router: str | None = None
+    llm_chain_rewrite: str | None = None
+    llm_chain_answer: str | None = None
+    llm_chain_title: str | None = None
+    llm_timeout_s: float = 60.0
+    openrouter_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    public_url: str = "http://localhost:3000"
+
     jwt_secret: str = DEV_JWT_SECRET
     jwt_ttl_minutes: int = 720
     # When set, every user's login password is this value (bcrypt-hashed at startup).
@@ -37,6 +53,16 @@ class Settings(BaseSettings):
     @property
     def is_local(self) -> bool:
         return self.app_env == "local"
+
+    def llm_task_chains(self) -> dict[str, str]:
+        overrides = {
+            "sql": self.llm_chain_sql,
+            "router": self.llm_chain_router,
+            "rewrite": self.llm_chain_rewrite,
+            "answer": self.llm_chain_answer,
+            "title": self.llm_chain_title,
+        }
+        return {task: chain for task, chain in overrides.items() if chain}
 
     def reader_url(self, role: str, password: str) -> str:
         url = make_url(self.database_url).set(username=role, password=password)

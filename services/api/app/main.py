@@ -12,6 +12,7 @@ from app.auth.repository import sync_demo_credentials
 from app.core.config import Settings, get_settings
 from app.db.engine import build_engine
 from app.db.executor import QueryExecutor
+from app.llm.factory import build_router
 
 log = logging.getLogger("app")
 
@@ -33,6 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.engine = build_engine(settings)
         app.state.executor = QueryExecutor(settings)
+        app.state.llm = build_router(settings)  # None when no LLM provider key is configured
         if settings.demo_password:
             written = await sync_demo_credentials(app.state.engine, settings.demo_password)
             if written:
@@ -40,6 +42,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if app.state.llm is not None:
+                await app.state.llm.aclose()
             await app.state.executor.dispose()
             await app.state.engine.dispose()
 
