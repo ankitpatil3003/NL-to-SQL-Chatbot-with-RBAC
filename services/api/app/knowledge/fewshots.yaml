@@ -1,0 +1,473 @@
+# Curated NL -> SQL examples, retrieved by similarity to the user's question and shown to the
+# model as worked examples. Rules:
+#   * every `sql` must pass the SQL guard and return rows on the full dataset (tests enforce this);
+#   * `rules` cite semantic-contract rule ids the example demonstrates;
+#   * `exec_only: true` marks examples that use wac; they are never shown to non-Exec users.
+# Questions mirror docs/account_analytics.md and docs/product_analytics.md. Current period labels:
+# this quarter '2026-Q3' (partial), last quarter '2026-Q2', this year 2026.
+
+examples:
+  # --- Accounts ------------------------------------------------------------------------------
+  - id: top-accounts-quarter
+    question: What are my top 10 accounts by pack units this quarter?
+    rules: [DS-1, ORG-1, T-2]
+    sql: |
+      SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account, SUM(s.pack_units) AS total_units
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_qtr = '2026-Q3'
+      GROUP BY 1 ORDER BY total_units DESC LIMIT 10
+
+  - id: accounts-declining-qoq
+    question: Which accounts have declined more than 20% in volume vs prior quarter?
+    rules: [DS-1, ORG-1, T-2]
+    sql: |
+      WITH q AS (
+        SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account,
+               SUM(s.pack_units) FILTER (WHERE s.period_qtr = '2026-Q2') AS prior_units,
+               SUM(s.pack_units) FILTER (WHERE s.period_qtr = '2026-Q3') AS current_units
+        FROM sales s JOIN organizations o ON s.org_id = o.org_id
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_qtr IN ('2026-Q2', '2026-Q3')
+        GROUP BY 1
+      )
+      SELECT account, prior_units, COALESCE(current_units, 0) AS current_units,
+             ROUND(CAST(100.0 * (COALESCE(current_units, 0) - prior_units) / prior_units AS numeric), 1) AS change_pct
+      FROM q WHERE prior_units > 0 AND COALESCE(current_units, 0) < 0.8 * prior_units
+      ORDER BY change_pct LIMIT 50
+
+  - id: rank-territories
+    question: Rank all territories by total NovaPharma volume
+    rules: [DS-1, GEO-1, T-5]
+    sql: |
+      SELECT z.territory_name, z.region_name, SUM(s.pack_units) AS total_units
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id JOIN zip_territory z ON o.zip = z.zip
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+      GROUP BY 1, 2 ORDER BY total_units DESC
+
+  - id: territories-qoq
+    question: How are territories in my region performing this quarter vs last quarter?
+    rules: [DS-1, GEO-1, T-2]
+    sql: |
+      SELECT z.territory_name,
+             SUM(s.pack_units) FILTER (WHERE s.period_qtr = '2026-Q2') AS last_quarter_units,
+             SUM(s.pack_units) FILTER (WHERE s.period_qtr = '2026-Q3') AS this_quarter_units
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id JOIN zip_territory z ON o.zip = z.zip
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_qtr IN ('2026-Q2', '2026-Q3')
+      GROUP BY 1 ORDER BY this_quarter_units DESC
+
+  - id: standalone-facilities
+    question: List all standalone facilities (no parent hierarchy) and their total volume
+    rules: [DS-1, ORG-2, T-5]
+    sql: |
+      SELECT o.org_name, o.city, o.state, SUM(s.pack_units) AS total_units
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+        AND o.org_type = 'Facility' AND o.parent_org_id IS NULL AND o.grandparent_org_id IS NULL
+      GROUP BY 1, 2, 3 ORDER BY total_units DESC LIMIT 100
+
+  - id: facilities-per-system
+    question: Which health systems have the most active facilities?
+    rules: [ORG-2, ORG-3]
+    sql: |
+      SELECT o.grandparent_org_name AS health_system, COUNT(*) AS active_facilities
+      FROM organizations o
+      WHERE o.org_type = 'Facility' AND o.org_status = 'Active' AND o.grandparent_org_name IS NOT NULL
+      GROUP BY 1 ORDER BY active_facilities DESC LIMIT 20
+
+  - id: volume-by-gpo
+    question: What is our total volume by GPO?
+    rules: [DS-1, ORG-4, T-5]
+    sql: |
+      SELECT COALESCE(o.gpo_name, 'No GPO') AS gpo, SUM(s.pack_units) AS total_units,
+             COUNT(DISTINCT COALESCE(o.grandparent_org_name, o.org_name)) AS accounts
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+      GROUP BY 1 ORDER BY total_units DESC
+
+  - id: share-340b
+    question: What percentage of total volume comes from 340B accounts?
+    rules: [DS-1, ORG-4, T-5]
+    sql: |
+      SELECT ROUND(CAST(100.0 * SUM(s.pack_units) FILTER (WHERE o.is_340b = 1)
+                        / NULLIF(SUM(s.pack_units), 0) AS numeric), 1) AS pct_340b_volume
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+
+  - id: hospital-vs-clinic
+    question: Compare hospital vs clinic accounts by total volume
+    rules: [DS-1, ORG-2]
+    sql: |
+      SELECT o.org_archetype, SUM(s.pack_units) AS total_units, COUNT(DISTINCT o.org_id) AS facilities
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND o.org_archetype IN ('Hospital', 'Clinic')
+      GROUP BY 1 ORDER BY total_units DESC
+
+  - id: hub-heavy-accounts
+    question: Show me accounts where hub dispense (free drug) is more than 10% of total volume
+    rules: [DS-2, ORG-1]
+    sql: |
+      SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account,
+             SUM(s.pack_units) FILTER (WHERE s.data_source = 'hub_dispense') AS free_units,
+             SUM(s.pack_units) AS total_units,
+             ROUND(CAST(100.0 * SUM(s.pack_units) FILTER (WHERE s.data_source = 'hub_dispense')
+                        / NULLIF(SUM(s.pack_units), 0) AS numeric), 1) AS free_pct
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      WHERE s.data_source IN ('distributor', 'hub_dispense') AND s.brand_flag = 1
+      GROUP BY 1
+      HAVING SUM(s.pack_units) FILTER (WHERE s.data_source = 'hub_dispense') > 0.1 * SUM(s.pack_units)
+      ORDER BY free_pct DESC LIMIT 50
+
+  - id: largest-account-trend
+    question: Show me the monthly volume trend for my largest account over the last 6 months
+    rules: [DS-1, ORG-1, T-1, T-3]
+    sql: |
+      WITH largest AS (
+        SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account
+        FROM sales s JOIN organizations o ON s.org_id = o.org_id
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset BETWEEN 0 AND 5
+        GROUP BY 1 ORDER BY SUM(s.pack_units) DESC LIMIT 1
+      )
+      SELECT largest.account, s.period_mo, SUM(s.pack_units) AS total_units
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      JOIN largest ON COALESCE(o.grandparent_org_name, o.org_name) = largest.account
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset BETWEEN 0 AND 5
+      GROUP BY 1, 2 ORDER BY s.period_mo
+
+  - id: account-share-trend-weighted
+    question: Which accounts are losing Zenovax market share, R3M vs R6M?
+    rules: [MS-2, T-1, T-4, ORG-1]
+    sql: |
+      WITH nova AS (
+        SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account,
+               SUM(s.pack_units * p.unit_conversion_factor) FILTER (WHERE s.mo_offset IN (0, 1, 2)) AS r3m,
+               SUM(s.pack_units * p.unit_conversion_factor) FILTER (WHERE s.mo_offset IN (3, 4, 5)) AS r6m
+        FROM sales s JOIN products p ON s.ndc = p.ndc JOIN organizations o ON s.org_id = o.org_id
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Docetaxel'
+          AND s.mo_offset BETWEEN 0 AND 5
+        GROUP BY 1
+      ), market AS (
+        SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account,
+               SUM(s.pack_units * p.unit_conversion_factor) FILTER (WHERE s.mo_offset IN (0, 1, 2)) AS r3m,
+               SUM(s.pack_units * p.unit_conversion_factor) FILTER (WHERE s.mo_offset IN (3, 4, 5)) AS r6m
+        FROM sales s JOIN products p ON s.ndc = p.ndc JOIN organizations o ON s.org_id = o.org_id
+        WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset BETWEEN 0 AND 5
+        GROUP BY 1
+      ), shares AS (
+        SELECT market.account,
+               COALESCE(nova.r3m, 0) / NULLIF(market.r3m, 0) AS r3m_share,
+               COALESCE(nova.r6m, 0) / NULLIF(market.r6m, 0) AS r6m_share,
+               COALESCE(market.r3m, 0) + COALESCE(market.r6m, 0) AS market_volume
+        FROM market LEFT JOIN nova ON nova.account = market.account
+      )
+      SELECT account,
+             ROUND(CAST(100 * r3m_share AS numeric), 1) AS r3m_share_pct,
+             ROUND(CAST(100 * r6m_share AS numeric), 1) AS r6m_share_pct,
+             ROUND(CAST((r3m_share - r6m_share) * market_volume AS numeric), 1) AS weighted_trend
+      FROM shares WHERE r3m_share < r6m_share
+      ORDER BY weighted_trend LIMIT 20
+
+  # --- Products ------------------------------------------------------------------------------
+  - id: product-this-quarter
+    question: How is Zenovax performing this quarter in pack units?
+    rules: [DS-1, P-1, T-2]
+    sql: |
+      SELECT s.period_qtr, SUM(s.pack_units) AS total_units
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX'
+        AND s.period_qtr IN ('2026-Q2', '2026-Q3')
+      GROUP BY 1 ORDER BY 1
+
+  - id: product-monthly-year
+    question: Show me monthly Gemtara volume for the past year
+    rules: [DS-1, P-1, T-1, T-3]
+    sql: |
+      SELECT s.period_mo, SUM(s.pack_units) AS total_units
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'GEMTARA'
+        AND s.mo_offset BETWEEN 0 AND 11
+      GROUP BY 1 ORDER BY 1
+
+  - id: rank-brands-ytd
+    question: Rank all our branded products by total pack units this year
+    rules: [DS-1, T-2]
+    sql: |
+      SELECT s.drug_name, SUM(s.pack_units) AS total_units
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_mo BETWEEN '2026-01' AND '2026-09'
+      GROUP BY 1 ORDER BY total_units DESC
+
+  - id: compare-two-products
+    question: Compare Zenovax vs Carbotrel volume over the last 12 months
+    rules: [DS-1, T-1, T-3]
+    sql: |
+      SELECT s.period_mo,
+             SUM(s.pack_units) FILTER (WHERE s.drug_name = 'ZENOVAX') AS zenovax_units,
+             SUM(s.pack_units) FILTER (WHERE s.drug_name = 'CARBOTREL') AS carbotrel_units
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name IN ('ZENOVAX', 'CARBOTREL')
+        AND s.mo_offset BETWEEN 0 AND 11
+      GROUP BY 1 ORDER BY 1
+
+  - id: brand-vs-competitors
+    question: How does Zenovax volume compare to Taxotere and Docetaxel Generic?
+    rules: [DS-1, DS-3, DS-4, M-2, P-1]
+    sql: |
+      SELECT s.drug_name, s.data_source, SUM(s.pack_units * p.unit_conversion_factor) AS equivalents
+      FROM sales s JOIN products p ON s.ndc = p.ndc
+      WHERE p.market_subcategory = 'Docetaxel'
+        AND ((s.data_source = 'distributor' AND s.brand_flag = 1) OR s.data_source = 'market_data')
+      GROUP BY 1, 2 ORDER BY equivalents DESC
+
+  - id: generic-share-category
+    question: What is the generic share in the Platinum Compounds market?
+    rules: [DS-3, M-2, P-1]
+    sql: |
+      SELECT ROUND(CAST(100.0 * SUM(s.pack_units * p.unit_conversion_factor) FILTER (WHERE s.drug_name LIKE '%GENERIC%')
+                        / NULLIF(SUM(s.pack_units * p.unit_conversion_factor), 0) AS numeric), 1) AS generic_share_pct
+      FROM sales s JOIN products p ON s.ndc = p.ndc
+      WHERE s.data_source = 'market_data' AND p.market_category = 'Platinum Compounds'
+
+  - id: market-share-product
+    question: What is our market share for Zenovax?
+    rules: [MS-1, MS-3, MS-4]
+    sql: |
+      WITH nova AS (
+        SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Docetaxel'
+          AND s.mo_offset IN (0, 1, 2)
+      ), market AS (
+        SELECT SUM(s.pack_units * p.unit_conversion_factor) AS eq FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Docetaxel' AND s.mo_offset IN (0, 1, 2)
+      )
+      SELECT ROUND(CAST(100.0 * nova.eq / NULLIF(market.eq, 0) AS numeric), 1) AS market_share_pct
+      FROM nova CROSS JOIN market
+
+  - id: share-trend-quarters
+    question: How has Carbotrel market share changed over the last 4 quarters?
+    rules: [MS-2, T-2]
+    sql: |
+      WITH nova AS (
+        SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Carboplatin'
+          AND s.period_qtr IN ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3')
+        GROUP BY 1
+      ), market AS (
+        SELECT s.period_qtr, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Carboplatin'
+          AND s.period_qtr IN ('2025-Q4', '2026-Q1', '2026-Q2', '2026-Q3')
+        GROUP BY 1
+      )
+      SELECT market.period_qtr,
+             ROUND(CAST(100.0 * COALESCE(nova.eq, 0) / NULLIF(market.eq, 0) AS numeric), 1) AS market_share_pct
+      FROM market LEFT JOIN nova ON nova.period_qtr = market.period_qtr
+      ORDER BY market.period_qtr
+
+  - id: share-below-average-territories
+    question: Which territories have below-average market share for Gemtara?
+    rules: [MS-2, MS-4, GEO-1]
+    sql: |
+      WITH nova AS (
+        SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        JOIN organizations o ON s.org_id = o.org_id JOIN zip_territory z ON o.zip = z.zip
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND p.market_subcategory = 'Gemcitabine'
+          AND s.mo_offset IN (0, 1, 2)
+        GROUP BY 1
+      ), market AS (
+        SELECT z.territory_name, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        JOIN organizations o ON s.org_id = o.org_id JOIN zip_territory z ON o.zip = z.zip
+        WHERE s.data_source = 'market_data' AND p.market_subcategory = 'Gemcitabine' AND s.mo_offset IN (0, 1, 2)
+        GROUP BY 1
+      ), shares AS (
+        SELECT market.territory_name, 100.0 * COALESCE(nova.eq, 0) / NULLIF(market.eq, 0) AS share_pct
+        FROM market LEFT JOIN nova ON nova.territory_name = market.territory_name
+      )
+      SELECT territory_name, ROUND(CAST(share_pct AS numeric), 1) AS market_share_pct,
+             ROUND(CAST(AVG(share_pct) OVER () AS numeric), 1) AS average_share_pct
+      FROM shares
+      ORDER BY share_pct
+
+  - id: share-by-category
+    question: Compare our market share across all market categories
+    rules: [MS-1, MS-2, MS-4]
+    sql: |
+      WITH nova AS (
+        SELECT p.market_category, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset IN (0, 1, 2)
+        GROUP BY 1
+      ), market AS (
+        SELECT p.market_category, SUM(s.pack_units * p.unit_conversion_factor) AS eq
+        FROM sales s JOIN products p ON s.ndc = p.ndc
+        WHERE s.data_source = 'market_data' AND s.mo_offset IN (0, 1, 2)
+          AND p.market_subcategory IN (SELECT market_subcategory FROM products WHERE brand_flag = 1)
+        GROUP BY 1
+      )
+      SELECT market.market_category,
+             ROUND(CAST(100.0 * COALESCE(nova.eq, 0) / NULLIF(market.eq, 0) AS numeric), 1) AS market_share_pct
+      FROM market LEFT JOIN nova ON nova.market_category = market.market_category
+      ORDER BY market_share_pct DESC
+
+  - id: strength-split
+    question: What is the volume split between Zenovax 80MG/4ML and 20MG/1ML?
+    rules: [DS-1, P-2]
+    sql: |
+      SELECT p.strength, SUM(s.pack_units) AS total_units,
+             ROUND(CAST(100.0 * SUM(s.pack_units) / SUM(SUM(s.pack_units)) OVER () AS numeric), 1) AS pct_of_units
+      FROM sales s JOIN products p ON s.ndc = p.ndc
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX'
+      GROUP BY 1 ORDER BY total_units DESC
+
+  - id: data-source-breakdown
+    question: Show me the data source breakdown for all NovaPharma products
+    rules: [DS-1, DS-2]
+    sql: |
+      SELECT s.drug_name, s.data_source, SUM(s.pack_units) AS total_units
+      FROM sales s
+      WHERE s.brand_flag = 1
+      GROUP BY 1, 2 ORDER BY 1, 2
+
+  - id: hub-pct-product
+    question: What percentage of Gemtara total volume comes through hub dispense?
+    rules: [DS-2]
+    sql: |
+      SELECT ROUND(CAST(100.0 * SUM(s.pack_units) FILTER (WHERE s.data_source = 'hub_dispense')
+                        / NULLIF(SUM(s.pack_units), 0) AS numeric), 1) AS hub_dispense_pct
+      FROM sales s
+      WHERE s.drug_name = 'GEMTARA' AND s.data_source IN ('distributor', 'hub_dispense')
+
+  - id: free-drug-last-month
+    question: How much free drug did we provide last month?
+    rules: [DS-2, T-1]
+    sql: |
+      SELECT s.drug_name, SUM(s.pack_units) AS free_units
+      FROM sales s
+      WHERE s.data_source = 'hub_dispense' AND s.mo_offset = 1
+      GROUP BY 1 ORDER BY free_units DESC
+
+  - id: market-size-category
+    question: What is the total market size for Alkylating Agents?
+    rules: [DS-3, M-2]
+    sql: |
+      SELECT p.market_subcategory, SUM(s.pack_units * p.unit_conversion_factor) AS market_equivalents
+      FROM sales s JOIN products p ON s.ndc = p.ndc
+      WHERE s.data_source = 'market_data' AND p.market_category = 'Alkylating Agents'
+      GROUP BY 1
+
+  - id: region-top-product
+    question: Which region has the highest Zenovax volume?
+    rules: [DS-1, GEO-1]
+    sql: |
+      SELECT z.region_name, SUM(s.pack_units) AS total_units
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id JOIN zip_territory z ON o.zip = z.zip
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX'
+      GROUP BY 1 ORDER BY total_units DESC
+
+  - id: top-states-product
+    question: What are the top 5 states for Oncosetron volume?
+    rules: [DS-1]
+    sql: |
+      SELECT s.state, SUM(s.pack_units) AS total_units
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ONCOSETRON'
+      GROUP BY 1 ORDER BY total_units DESC LIMIT 5
+
+  - id: mom-trend
+    question: Is Zenovax volume growing or declining month over month?
+    rules: [DS-1, T-1, T-3]
+    sql: |
+      SELECT s.period_mo, SUM(s.pack_units) AS total_units,
+             ROUND(CAST(100.0 * (SUM(s.pack_units) - LAG(SUM(s.pack_units)) OVER (ORDER BY s.period_mo))
+                        / NULLIF(LAG(SUM(s.pack_units)) OVER (ORDER BY s.period_mo), 0) AS numeric), 1) AS mom_change_pct
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'ZENOVAX'
+        AND s.mo_offset BETWEEN 0 AND 11
+      GROUP BY 1 ORDER BY 1
+
+  - id: yoy-growth-products
+    question: Show me the year-over-year growth rate for each NovaPharma product
+    rules: [DS-1, T-1]
+    sql: |
+      SELECT s.drug_name,
+             SUM(s.pack_units) FILTER (WHERE s.mo_offset BETWEEN 0 AND 11) AS last_12m_units,
+             SUM(s.pack_units) FILTER (WHERE s.mo_offset BETWEEN 12 AND 23) AS prior_12m_units,
+             ROUND(CAST(100.0 * (SUM(s.pack_units) FILTER (WHERE s.mo_offset BETWEEN 0 AND 11)
+                                 - SUM(s.pack_units) FILTER (WHERE s.mo_offset BETWEEN 12 AND 23))
+                        / NULLIF(SUM(s.pack_units) FILTER (WHERE s.mo_offset BETWEEN 12 AND 23), 0) AS numeric), 1) AS yoy_growth_pct
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.mo_offset BETWEEN 0 AND 23
+      GROUP BY 1 ORDER BY yoy_growth_pct DESC
+
+  - id: same-quarter-yoy
+    question: Compare Q1 2026 vs Q1 2025 for all oncology products
+    rules: [DS-1, T-2, P-2]
+    sql: |
+      SELECT s.drug_name,
+             SUM(s.pack_units) FILTER (WHERE s.period_qtr = '2025-Q1') AS q1_2025_units,
+             SUM(s.pack_units) FILTER (WHERE s.period_qtr = '2026-Q1') AS q1_2026_units
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.specialty = 'Oncology'
+        AND s.period_qtr IN ('2025-Q1', '2026-Q1')
+      GROUP BY 1 ORDER BY q1_2026_units DESC
+
+  - id: rolling-3m-average
+    question: What is the rolling 3-month average volume for Paxelium?
+    rules: [DS-1, T-3]
+    sql: |
+      SELECT s.period_mo, SUM(s.pack_units) AS total_units,
+             ROUND(CAST(AVG(SUM(s.pack_units)) OVER (ORDER BY s.period_mo ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS numeric), 1) AS rolling_3m_avg
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.drug_name = 'PAXELIUM'
+        AND s.mo_offset BETWEEN 0 AND 11
+      GROUP BY 1 ORDER BY 1
+
+  - id: oncology-vs-urology
+    question: What is the oncology vs urology split across my accounts?
+    rules: [DS-1, P-2]
+    sql: |
+      SELECT s.specialty, SUM(s.pack_units) AS total_units,
+             ROUND(CAST(100.0 * SUM(s.pack_units) / SUM(SUM(s.pack_units)) OVER () AS numeric), 1) AS pct_of_units
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+      GROUP BY 1 ORDER BY total_units DESC
+
+  # --- Totals: units for everyone, dollars only for Execs ------------------------------------
+  - id: total-sales-units
+    question: What are our total sales?
+    rules: [DS-1, SEC-1, T-5]
+    sql: |
+      SELECT SUM(s.pack_units) AS total_units, MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+
+  - id: total-sales-revenue
+    question: What are our total sales in dollars?
+    exec_only: true
+    rules: [DS-1, M-3, T-5]
+    sql: |
+      SELECT ROUND(CAST(SUM(s.wac) AS numeric), 2) AS gross_revenue, SUM(s.pack_units) AS total_units,
+             MIN(s.period_mo) AS from_month, MAX(s.period_mo) AS to_month
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1
+
+  - id: revenue-by-product-ytd
+    question: What is our revenue by product this year?
+    exec_only: true
+    rules: [DS-1, M-3, T-2]
+    sql: |
+      SELECT s.drug_name, ROUND(CAST(SUM(s.wac) AS numeric), 2) AS gross_revenue
+      FROM sales s
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_mo BETWEEN '2026-01' AND '2026-09'
+      GROUP BY 1 ORDER BY gross_revenue DESC
+
+  - id: top-accounts-revenue
+    question: Top 10 accounts by revenue last quarter
+    exec_only: true
+    rules: [DS-1, M-3, ORG-1, T-2]
+    sql: |
+      SELECT COALESCE(o.grandparent_org_name, o.org_name) AS account, ROUND(CAST(SUM(s.wac) AS numeric), 2) AS gross_revenue
+      FROM sales s JOIN organizations o ON s.org_id = o.org_id
+      WHERE s.data_source = 'distributor' AND s.brand_flag = 1 AND s.period_qtr = '2026-Q2'
+      GROUP BY 1 ORDER BY gross_revenue DESC LIMIT 10

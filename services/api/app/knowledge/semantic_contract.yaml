@@ -152,6 +152,9 @@ rules:
       FROM market LEFT JOIN nova ON nova.territory_name = market.territory_name
       ORDER BY market_share_pct DESC
 
+  - id: MS-4
+    rule: Market share with no stated period defaults to R3M (mo_offset IN (0, 1, 2)); say so.
+
   - id: MS-3
     rule: >-
       In this dataset market_data contains no NovaPharma rows, so the documented formula (MS-1) can
@@ -174,6 +177,12 @@ rules:
       state which interpretation you used.
   - id: T-3
     rule: Trends group by period_mo / period_qtr / period_wk and ORDER BY that label.
+  - id: T-5
+    rule: >-
+      A total with no stated period ("what are our total sales?") covers all available history;
+      state the period covered in the answer. Rankings and "performance" questions without a
+      period use the last 3 months (R3M).
+
   - id: T-4
     rule: >-
       R3M vs R6M trend = R3M share - R6M share; weighted trend multiplies by

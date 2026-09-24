@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.knowledge.chunker import chunk_docs
 from app.knowledge.contract import Catalog, Contract, load_catalog, load_contract
 from app.knowledge.embedder import Embedder
+from app.knowledge.fewshots import items_from_examples, load_examples
 from app.knowledge.store import HybridRetriever, KbItem, items_from_chunks, sync_knowledge
 
 log = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ def get_embedder(cache_dir: str | None) -> Embedder:
 def corpus_items(docs_dir: Path) -> list[KbItem]:
     if not docs_dir.is_dir():
         raise FileNotFoundError(f"knowledge docs directory not found: {docs_dir}")
-    return items_from_chunks(chunk_docs(docs_dir))
+    return items_from_chunks(chunk_docs(docs_dir)) + items_from_examples(load_examples())
 
 
 async def init_knowledge(

@@ -19,6 +19,12 @@ from app.knowledge.embedder import MODEL_NAME, Embedder
 
 Kind = Literal["doc", "example"]
 RRF_K = 60  # standard RRF constant: dampens the weight of the very top ranks
+# Dense-dominant fusion, measured (tests/integration/test_fewshots_live.py, 18 paraphrased
+# questions + 10 doc questions). Lexical weight sweep, recall@1 on examples: 0 -> 14/18,
+# 0.25 -> 15/18, 0.5 -> 14/18, 1.0 (plain RRF) -> 12/18; docs 10/10 throughout. Small eval, so a
+# directional result: keywords help as a light signal and hurt at equal weight (brand names like
+# "Zenovax" match half the example bank).
+DEFAULT_WEIGHTS = {"dense": 1.0, "lexical": 0.25}
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,24 +120,35 @@ class Hit:
 
 
 def rrf_fuse(
-    rankings: dict[str, list[str]], k: int = RRF_K
+    rankings: dict[str, list[str]], weights: dict[str, float] | None = None, k: int = RRF_K
 ) -> list[tuple[str, float, dict[str, int]]]:
-    """Reciprocal Rank Fusion: score(d) = sum over retrievers of 1 / (k + rank)."""
+    """Weighted Reciprocal Rank Fusion: score(d) = sum over retrievers of w / (k + rank)."""
     scores: dict[str, float] = {}
     ranks: dict[str, dict[str, int]] = {}
     for retriever, ids in rankings.items():
+        weight = (weights or {}).get(retriever, 1.0)
+        if weight <= 0:
+            continue  # disabled retriever: contributes no candidates at all
         for rank, item_id in enumerate(ids, start=1):
-            scores[item_id] = scores.get(item_id, 0.0) + 1.0 / (k + rank)
+            scores[item_id] = scores.get(item_id, 0.0) + weight / (k + rank)
             ranks.setdefault(item_id, {})[retriever] = rank
     ordered = sorted(scores, key=lambda i: (-scores[i], i))
     return [(i, scores[i], ranks[i]) for i in ordered]
 
 
 class HybridRetriever:
-    def __init__(self, engine: AsyncEngine, embedder: Embedder, *, candidates: int = 20) -> None:
+    def __init__(
+        self,
+        engine: AsyncEngine,
+        embedder: Embedder,
+        *,
+        candidates: int = 20,
+        weights: dict[str, float] | None = None,
+    ) -> None:
         self._engine = engine
         self._embedder = embedder
         self._candidates = candidates
+        self._weights = weights if weights is not None else DEFAULT_WEIGHTS
 
     async def search(self, query: str, kind: Kind, k: int) -> list[Hit]:
         vector = _vector_literal(await self._embedder.query(query))
@@ -156,7 +173,8 @@ class HybridRetriever:
                 {"kind": kind, "query": query, "n": self._candidates},
             )
             fused = rrf_fuse(
-                {"dense": [r[0] for r in dense.all()], "lexical": [r[0] for r in lexical.all()]}
+                {"dense": [r[0] for r in dense.all()], "lexical": [r[0] for r in lexical.all()]},
+                self._weights,
             )[:k]
             if not fused:
                 return []

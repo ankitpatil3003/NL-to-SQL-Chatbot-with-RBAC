@@ -51,7 +51,7 @@ async def test_sync_is_idempotent(
     assert await sync_knowledge(engine, get_embedder(settings.embed_cache_dir), items) is False
     async with engine.connect() as conn:
         assert await conn.scalar(
-            text("SELECT count(*) FROM app.kb_items WHERE kind = 'doc'")
+            text("SELECT count(*) FROM app.kb_items")
         ) == len(items)
 
 
