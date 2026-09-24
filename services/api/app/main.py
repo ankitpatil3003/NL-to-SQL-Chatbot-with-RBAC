@@ -7,8 +7,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api import health
+from app.auth import router as auth
+from app.auth.repository import sync_demo_credentials
 from app.core.config import Settings, get_settings
 from app.db.engine import build_engine
+
+log = logging.getLogger("app")
 
 
 class _DropProbeAccessLogs(logging.Filter):
@@ -27,13 +31,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.engine = build_engine(settings)
+        if settings.demo_password:
+            written = await sync_demo_credentials(app.state.engine, settings.demo_password)
+            if written:
+                log.info("demo credentials set for %d users", written)
         try:
             yield
         finally:
             await app.state.engine.dispose()
 
     app = FastAPI(title="NovaPharma NL-to-SQL API", version="0.1.0", lifespan=lifespan)
+    # Routes read settings via Depends(get_settings); make that resolve to *this* app's settings,
+    # not a fresh read of the environment.
+    app.dependency_overrides[get_settings] = lambda: settings
     app.include_router(health.router)
+    app.include_router(auth.router)
     return app
 
 

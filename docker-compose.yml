@@ -37,6 +37,7 @@ services:
     environment:
       # Inside the compose network the database host is "db", not localhost.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pharma}:${POSTGRES_PASSWORD:-pharma_dev_pw}@db:5432/${POSTGRES_DB:-pharma}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-novapharma-demo}
     ports:
       - "8000:8000"
     depends_on:
