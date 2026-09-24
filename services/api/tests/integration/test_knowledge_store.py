@@ -50,9 +50,7 @@ async def test_sync_is_idempotent(
     items = corpus_items(settings.knowledge_docs_dir)
     assert await sync_knowledge(engine, get_embedder(settings.embed_cache_dir), items) is False
     async with engine.connect() as conn:
-        assert await conn.scalar(
-            text("SELECT count(*) FROM app.kb_items")
-        ) == len(items)
+        assert await conn.scalar(text("SELECT count(*) FROM app.kb_items")) == len(items)
 
 
 async def test_retrieval_recall_at_3(retriever: HybridRetriever) -> None:
