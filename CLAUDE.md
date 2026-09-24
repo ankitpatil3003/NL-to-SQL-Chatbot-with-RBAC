@@ -32,7 +32,7 @@ dataset, with role-based row/column security enforced on every query.
 | Stack | **Next.js (App Router, TypeScript) UI** + **FastAPI (Python 3.12) backend**. Two services. |
 | Schema | **The 5 base tables are frozen.** Same names, columns, and semantics, loaded straight from the generator CSVs + `seed_data.sql` users. Only additive, non-destructive objects are allowed: **indexes**, **read-only views** (RBAC scoping), and a separate **`app` schema** for our own tables (chat, credentials, traces, embeddings). Seed data and `generate_data.py` are ours to use. Filling NULLs is optional and must never be required for correctness. |
 | Domain knowledge | **Compiled semantic layer + hybrid retrieval.** A versioned semantic contract that is always in the prompt (prompt-cached), plus pgvector + BM25 retrieval over doc chunks and a curated NL→SQL few-shot bank. |
-| Auth | **Email + password → JWT in an httpOnly cookie.** bcrypt hashes in `app.credentials`, demo passwords seeded. Role and scope are **always resolved server-side** from `public.users`; client claims are never trusted. The login screen lists demo accounts for one-click fill. |
+| Auth | **Email + password → JWT in an httpOnly cookie.** bcrypt hashes in `app.credentials`. **One shared demo password for all 23 users** from `DEMO_PASSWORD` (env / Secrets Manager, never in the repo), synced at API startup, and **shown on the login page** (`DEMO_SHOW_CREDENTIALS`) so graders can switch roles quickly. Role and scope are **always resolved server-side** from `public.users` on every request; the JWT carries only the user id. |
 | Chat UX | **Like the Claude.ai web app:** a sidebar of persistent past sessions (reopen any old chat and continue it), a "New chat" button, streaming responses, and auto-generated titles. Chats persist per user across logins. |
 | Commits | **Conventional Commits, one per completed vertical slice**, on `main`. See §9. |
 
@@ -138,10 +138,12 @@ Each stage is a separate module, and each writes its output into the turn trace.
 | L1 Prompt | Scope + "no WAC" instructions in the system prompt | Most cases, cheaply (UX layer only) |
 | L2 Intent guard | Router flags revenue asks from non-Execs → offers a unit-based alternative; cross-scope asks → polite denial or own-scope answer | Clear UX for the security test scenarios |
 | L3 SQL AST guard | sqlglot: single `SELECT` only; allowlisted tables/columns; **reject any `wac` reference anywhere (incl. `*`) for non-Execs**; block `public.users`, `app.*`, system catalogs, and dangerous functions (`pg_sleep`, `dblink`, `lo_*`, `set_config`...); enforce LIMIT | Model mistakes and prompt injection |
-| L4 Database | Execute as a low-privilege role with `search_path = scoped`. `scoped.sales` / `scoped.organizations` views filter by `current_setting('app.scope_level')` / `('app.scope_value')` set via `SET LOCAL` per transaction; **non-Exec views omit the `wac` column entirely**; `SET TRANSACTION READ ONLY`; `statement_timeout` | Anything L1–L3 miss: data physically unreachable |
+| L4 Database | Dedicated LOGIN roles that belong to no other role: `nl2sql_scoped_reader` (Director/RAM) sees only the `scoped.*` views, which **have no `wac` column**; `nl2sql_exec_reader` (Exec) sees the base analytic tables. Row scope is **sealed** per transaction by `rbac.set_scope()` (SECURITY DEFINER, one-shot, stored in a temp table owned by the definer), so the query can't change it. Then `transaction_read_only`, `statement_timeout`, always ROLLBACK (`db/20_rbac.sql`, `app/db/executor.py`) | Anything L1–L3 miss: data physically unreachable |
 
-- Exec runs against an unrestricted read-only role (still no DML, no `users`, no `app.*`).
-- Scope values are **never** string-interpolated into SQL. Use bound `set_config()` parameters only.
+- **Why not `SET ROLE` + session GUCs:** verified that `SELECT set_config('role','pharma',true)` inside a query switches back to the owner, and any GUC can be overwritten the same way. Neither is a boundary against model-written SQL.
+- Exec runs on its own least-privilege login (still no DML, no `users`, no `app.*`).
+- Scope values are **never** string-interpolated into SQL (bound parameters to `rbac.set_scope`).
+- `tests/integration/test_rbac_executor.py` checks all 23 users against independently computed ground truth, plus 15 escape attempts. Mutation-tested: removing either view's row filter, leaking `wac` into a view, or granting the base table each fails the suite.
 - `products` and `zip_territory` are unrestricted reference data (per `docs/security_model.md`).
 - Chat sessions and messages are always filtered by the owner's `user_id`; access to another user's session returns 404.
 - The security test matrix (§8) must pass 100% before any deploy.
@@ -282,6 +284,5 @@ python evals/run_evals.py --dataset full      # evals → evals/reports/
 - HTTPS: custom domain + ACM cert on the ALB, vs CloudFront in front of the ALB with its default domain.
 - Charts in answers (Recharts) in v1, or tables only.
 - Observability: DB traces only, or also Langfuse/OpenTelemetry.
-- Demo password scheme and whether the login page shows credentials publicly.
 - AWS region and monthly cost ceiling; RDS instance size; whether to scale ECS to zero off-hours.
 - Rate limiting / per-user LLM budget on the public URL.
