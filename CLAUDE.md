@@ -26,12 +26,13 @@ dataset, with role-based row/column security enforced on every query.
 
 | Area | Decision |
 |---|---|
-| LLM | **Anthropic API primary** (Claude Sonnet 5 for SQL generation, Haiku 4.5 for cheap tasks: routing, titles, rewrites). **Fallback: open-weight models via OpenRouter** behind the same `LLMProvider` interface (failover on errors/timeouts/rate limits, configurable per task). |
+| LLM | **Provider-agnostic chain, configured by `LLM_CHAIN`** (`provider:model,...`, per-task overrides `LLM_CHAIN_SQL/_ROUTER/_REWRITE/_ANSWER/_TITLE`). **Default = free tier on OpenRouter: `nvidia/nemotron-3-super-120b-a12b:free` → `qwen/qwen3.8-27b:free`**, one key, same chain for the cheap side tasks. The router retries once, then falls back; every attempt is traced. Adapters: one OpenAI-compatible adapter (OpenRouter, and equally Cerebras/Groq/Gemini-compat/vLLM) + the Anthropic SDK adapter (`anthropic:claude-sonnet-5` can be appended as a paid last resort). Caveat: both free models share OpenRouter's per-account daily cap (50/day, or 1,000/day after a one-time $10 credit), so the fallback covers model outages, not quota exhaustion. |
 | Database | **PostgreSQL 16 on RDS** (local: Postgres in docker-compose). Extensions: `pgvector`, `pg_trgm`. |
 | Deployment | **AWS ECS Fargate + ALB, Terraform**. RDS in private subnets, secrets in Secrets Manager, images in ECR. |
 | Stack | **Next.js (App Router, TypeScript) UI** + **FastAPI (Python 3.12) backend**. Two services. |
 | Schema | **The 5 base tables are frozen.** Same names, columns, and semantics, loaded straight from the generator CSVs + `seed_data.sql` users. Only additive, non-destructive objects are allowed: **indexes**, **read-only views** (RBAC scoping), and a separate **`app` schema** for our own tables (chat, credentials, traces, embeddings). Seed data and `generate_data.py` are ours to use. Filling NULLs is optional and must never be required for correctness. |
 | Domain knowledge | **Compiled semantic layer + hybrid retrieval.** A versioned semantic contract that is always in the prompt (prompt-cached), plus pgvector + BM25 retrieval over doc chunks and a curated NL→SQL few-shot bank. |
+| Embeddings | **Local `BAAI/bge-small-en-v1.5` (384-dim) via fastembed/ONNX on CPU inside the API container.** No key, no per-call cost, deterministic in tests; ample for 8 docs + ~100 examples. |
 | Auth | **Email + password → JWT in an httpOnly cookie.** bcrypt hashes in `app.credentials`. **One shared demo password for all 23 users** from `DEMO_PASSWORD` (env / Secrets Manager, never in the repo), synced at API startup, and **shown on the login page** (`DEMO_SHOW_CREDENTIALS`) so graders can switch roles quickly. Role and scope are **always resolved server-side** from `public.users` on every request; the JWT carries only the user id. |
 | Chat UX | **Like the Claude.ai web app:** a sidebar of persistent past sessions (reopen any old chat and continue it), a "New chat" button, streaming responses, and auto-generated titles. Chats persist per user across logins. |
 | Commits | **Conventional Commits, one per completed vertical slice**, on `main`. See §9. |
@@ -279,8 +280,6 @@ python evals/run_evals.py --dataset full      # evals → evals/reports/
 
 ## 11. Open decisions (ask the user when reached; do not assume)
 
-- Embedding model: hosted (e.g. Voyage/OpenAI) vs local (fastembed/bge-small in the API container, no extra key). Leaning local.
-- OpenRouter fallback model choice (e.g. Qwen/DeepSeek/Llama) and whether fallback also serves cheap tasks.
 - HTTPS: custom domain + ACM cert on the ALB, vs CloudFront in front of the ALB with its default domain.
 - Charts in answers (Recharts) in v1, or tables only.
 - Observability: DB traces only, or also Langfuse/OpenTelemetry.
