@@ -37,6 +37,17 @@ class QueryFailed(Exception):
         self.sqlstate = sqlstate
 
 
+def _query_failed(exc: DBAPIError) -> QueryFailed:
+    """Keep the parts the self-repair loop needs: the primary message *and* the hint/detail.
+    (Taking the last line of str(exc) kept only the HINT and dropped the actual error.)"""
+    pg = exc.orig.__cause__ if exc.orig is not None else None  # the asyncpg exception
+    message = getattr(pg, "message", None) or str(exc.orig or exc).strip()
+    for label in ("detail", "hint"):
+        if extra := getattr(pg, label, None):
+            message += f" ({label.upper()}: {extra})"
+    return QueryFailed(message, getattr(pg, "sqlstate", None))
+
+
 @dataclass(frozen=True, slots=True)
 class QueryResult:
     columns: list[str]
@@ -81,9 +92,7 @@ class QueryExecutor:
                     truncated=len(rows) > self._row_limit,
                 )
             except DBAPIError as exc:
-                orig = exc.orig
-                sqlstate = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
-                raise QueryFailed(str(orig).splitlines()[-1].strip(), sqlstate) from exc
+                raise _query_failed(exc) from exc
             finally:
                 await conn.rollback()
 
