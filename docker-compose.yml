@@ -1,0 +1,50 @@
+# Local development stack: postgres (pgvector) + FastAPI + Next.js.
+# Usage: cp .env.example .env && docker compose up --build
+# Mirrors the AWS topology: web and api are separate services; /api/* goes to the api.
+
+name: pharma-nl2sql
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pharma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pharma_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-pharma}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./services/api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Inside the compose network the database host is "db", not localhost.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pharma}:${POSTGRES_PASSWORD:-pharma_dev_pw}@db:5432/${POSTGRES_DB:-pharma}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
