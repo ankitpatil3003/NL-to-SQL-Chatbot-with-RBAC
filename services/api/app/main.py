@@ -28,8 +28,20 @@ class _DropProbeAccessLogs(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_DropProbeAccessLogs())
 
 
+def configure_logging(level: str) -> None:
+    """Uvicorn configures only its own loggers; without this, app.* INFO logs (credential sync,
+    knowledge rebuilds, LLM fallbacks) were silently dropped."""
+    app_logger = logging.getLogger("app")
+    if not app_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        app_logger.addHandler(handler)
+    app_logger.setLevel(level.upper())
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging(settings.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

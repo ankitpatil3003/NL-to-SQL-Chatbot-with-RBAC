@@ -33,3 +33,8 @@ def test_probe_requests_are_dropped_from_access_log() -> None:
     assert not f.filter(record('127.0.0.1:1 - "GET /health HTTP/1.1" 200'))
     assert not f.filter(record('127.0.0.1:1 - "GET /health/ready HTTP/1.1" 200'))
     assert f.filter(record('127.0.0.1:1 - "GET /api/chat HTTP/1.1" 200'))
+
+
+def test_readiness_reports_assistant_disabled_without_llm_key() -> None:
+    with TestClient(create_app(UNREACHABLE_DB)) as client:
+        assert client.get("/health/ready").json()["assistant"].startswith("disabled")
