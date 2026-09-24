@@ -19,3 +19,17 @@ def test_readiness_reports_unreachable_database() -> None:
         resp = client.get("/health/ready")
         assert resp.status_code == 503
         assert resp.json()["database"] == "unreachable"
+
+
+def test_probe_requests_are_dropped_from_access_log() -> None:
+    import logging
+
+    from app.main import _DropProbeAccessLogs
+
+    def record(msg: str) -> logging.LogRecord:
+        return logging.LogRecord("uvicorn.access", logging.INFO, "", 0, msg, None, None)
+
+    f = _DropProbeAccessLogs()
+    assert not f.filter(record('127.0.0.1:1 - "GET /health HTTP/1.1" 200'))
+    assert not f.filter(record('127.0.0.1:1 - "GET /health/ready HTTP/1.1" 200'))
+    assert f.filter(record('127.0.0.1:1 - "GET /api/chat HTTP/1.1" 200'))
