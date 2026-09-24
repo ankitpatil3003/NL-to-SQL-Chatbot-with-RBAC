@@ -7,6 +7,13 @@ name: pharma-nl2sql
 services:
   db:
     image: pgvector/pgvector:pg16
+    # Docker defaults /dev/shm to 64MB; Postgres parallel workers (parallel scans, VACUUM)
+    # allocate from it and fail with "No space left on device" on the 2M-row sales table.
+    shm_size: 512mb
+    # Default shared_buffers (128MB) is smaller than sales + indexes (~550MB), so hot pages keep
+    # getting evicted (measured 40k vs 4.5k blocks read for the same RAM query). RDS defaults to
+    # ~25% of instance RAM; match that ballpark locally.
+    command: ["postgres", "-c", "shared_buffers=768MB", "-c", "effective_cache_size=2GB"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pharma}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pharma_dev_pw}
