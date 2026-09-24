@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import datetime as dt
 import json
+import math
 import statistics
 import subprocess
 import sys
@@ -162,6 +163,14 @@ async def run_arm(
     return results
 
 
+def nearest_rank(values: list[int], q: float) -> int:
+    """Nearest-rank percentile: the smallest value with at least q of the data at or below it."""
+    if not values:
+        return 0
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(q * len(ordered)) - 1)]
+
+
 def summarise(results: list[CaseResult]) -> dict[str, Any]:
     latencies = [r.latency_ms for r in results]
     costs = [r.cost_usd for r in results if r.cost_usd is not None]
@@ -174,9 +183,7 @@ def summarise(results: list[CaseResult]) -> dict[str, Any]:
         "accuracy": round(sum(r.passed for r in results) / len(results), 3) if results else 0,
         "by_category": {c: f"{sum(v)}/{len(v)}" for c, v in sorted(categories.items())},
         "latency_p50_ms": int(statistics.median(latencies)) if latencies else 0,
-        "latency_p95_ms": int(sorted(latencies)[max(0, int(len(latencies) * 0.95) - 1)])
-        if latencies
-        else 0,
+        "latency_p95_ms": nearest_rank(latencies, 0.95),
         "cost_usd_total": round(sum(costs), 4),
         "repaired": sum(r.sql_attempts > 1 for r in results),
         "fell_back": sum(r.fell_back for r in results),
