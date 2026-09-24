@@ -154,7 +154,10 @@ def render_contract(contract: Contract, catalog: Catalog) -> str:
 
 def render_user_scope(user: UserContext) -> str:
     wac = (
-        "This user MAY see WAC (dollar) figures."
+        # docs/security_model.md scenario 3: an Exec asking for "total sales" sees pricing.
+        # Measured: without this the model copied the units-only example (eval 20260924-182739).
+        "This user MAY see WAC (dollar) figures: for sales or revenue totals, report both "
+        "dollars (SUM(wac), M-3) and units."
         if user.can_view_wac
         else "This user may NOT see WAC: never reference the wac column; use volume (SEC-1)."
     )

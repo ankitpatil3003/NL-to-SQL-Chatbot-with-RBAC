@@ -117,8 +117,8 @@ DESIGN.md  TESTING.md         deliverables
 Each stage is a separate module, and each writes its output into the turn trace.
 
 1. **Context resolution:** load `UserContext` (role, territory, region, can_view_wac) from DB by JWT `sub`.
-2. **Guard / intent router** (Haiku, structured output): `data_question | follow_up | clarification_needed | chitchat | out_of_scope | restricted`. Detects revenue/WAC intent from non-Execs and out-of-scope geography requests before any SQL is generated.
-3. **Conversational rewrite:** turns a follow-up into a standalone question using the prior turns plus the **previous SQL** (so "now break that down by quarter" edits the last query).
+2. **Query understanding** (one structured call, merged from the planned router + rewrite to save a round trip per turn): intent `data_question | clarify | smalltalk | out_of_scope`, standalone rewrite of follow-ups, `asks_for_dollars`, mentions. It receives the user's role and scope, so "my region" is never ambiguous.
+3. *(merged into 2)*
 4. **Entity resolution:** fuzzy-matches drugs, territories, regions, GPOs, and account names against DB value dictionaries (`pg_trgm` + synonym list from the semantic contract), e.g. "Zenovax" → `ZENOVAX`, "NY metro" → `New York Metro`.
 5. **Knowledge assembly:** the semantic contract (always included, cache-controlled) + top-k doc chunks (hybrid: pgvector cosine + Postgres full-text BM25, fused with RRF) + top-k similar few-shots.
 6. **SQL generation** (Sonnet, tool/structured output): `{sql, reasoning_summary, assumptions[], result_shape, chart_hint}`. The prompt includes the user's scope and WAC permission, but security never depends on the prompt.
@@ -248,7 +248,9 @@ python scripts/load_data.py --full            # generate + load 2M rows
 python scripts/build_kb.py                    # embeddings + few-shots
 docker compose up --build                     # db :5433, api :8000, web :3000 (use :3000)
 pytest services/api/tests                     # unit + integration
-python evals/run_evals.py --dataset full      # evals → evals/reports/
+cd services/api && uv run python -m evals.run   # golden set → services/api/evals/reports/
+uv run python -m evals.run --arm a=<chain> --arm b=<chain>   # compare SQL models
+uv run python -m app.cli --user amy.nguyen@novapharma.com --sql --trace "question" "follow-up"
 ```
 
 ---
