@@ -11,3 +11,4 @@ Return JSON with:
 - asks_for_dollars: true if the user asks for revenue, dollars, price, WAC or gross sales value.
 - mentions: named things in the standalone question, each {kind, text} with kind one of drug, territory, region, gpo, account, market, other. Copy the user's wording; don't normalise.
 - reply: for clarify, one short clarifying question; for smalltalk, a brief friendly answer that says what kinds of questions you can answer; for out_of_scope, a brief polite decline that says what you can help with. Empty string for data_question.
+- title: a 3 to 6 word title for a chat that starts with this message, in title case, no quotes or trailing punctuation (e.g. "Zenovax Market Share by Territory").

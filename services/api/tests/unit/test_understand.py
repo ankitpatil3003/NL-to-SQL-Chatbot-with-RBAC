@@ -17,7 +17,7 @@ async def test_understand_sends_history_and_returns_validated_model() -> None:
     llm, fake = scripted_router()
     expected = Understanding(
         intent="data_question", standalone_question="Top 5 accounts this quarter by month",
-        is_follow_up=True, asks_for_dollars=False, mentions=[Mention(kind="other", text="month")], reply="",
+        is_follow_up=True, asks_for_dollars=False, mentions=[Mention(kind="other", text="month")], reply="", title="Top Accounts by Month",
     )  # fmt: skip
     fake.add("router", expected)
     history = [HistoryTurn("What are my top 5 accounts this quarter?", "Goldcrest leads...")]

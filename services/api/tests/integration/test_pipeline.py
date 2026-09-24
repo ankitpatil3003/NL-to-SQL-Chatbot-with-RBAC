@@ -28,7 +28,7 @@ UNITS_SQL = (
 def understood(question: str, intent: str = "data_question", **kw: object) -> Understanding:
     fields: dict[str, object] = {
         "intent": intent, "standalone_question": question, "is_follow_up": False,
-        "asks_for_dollars": False, "mentions": [], "reply": "",
+        "asks_for_dollars": False, "mentions": [], "reply": "", "title": "",
     }  # fmt: skip
     return Understanding.model_validate(fields | kw)
 

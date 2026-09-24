@@ -84,6 +84,7 @@ class Pipeline:
             trace.status, trace.error = "error", f"{type(exc).__name__}: {exc}"
             result = TurnResult(status="error", answer=UNEXPECTED)
         assert isinstance(result, TurnResult)
+        result.title = trace.detail.get("understanding", {}).get("title") or None
         try:
             result.trace_id = await save_trace(self._engine, trace)
         except Exception:

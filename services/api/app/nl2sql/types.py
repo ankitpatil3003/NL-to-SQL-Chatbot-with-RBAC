@@ -25,6 +25,9 @@ class Understanding(BaseModel):
     asks_for_dollars: bool
     mentions: list[Mention]
     reply: str  # the message to send when intent != data_question; otherwise ""
+    # Chat title (used on a chat's first turn). Structured output keeps reasoning models from
+    # leaking their thinking into it, which a separate plain-text title call did.
+    title: str
 
 
 class SqlDraft(BaseModel):
@@ -72,6 +75,7 @@ class TurnResult:
     rules_applied: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # e.g. scope limits, dollars not available
     trace_id: str | None = None
+    title: str | None = None  # suggested chat title (from query understanding)
 
 
 @dataclass(frozen=True, slots=True)
