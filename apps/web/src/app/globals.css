@@ -1,26 +1,141 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Surfaces and chart colours come from the data-viz reference palette (validated
+ * for colour-blind separation against exactly these surfaces), so the app background *is* the
+ * chart surface. Dark values are declared twice: under the OS media query (guarded so a manual
+ * light choice wins) and under [data-theme="dark"] (a manual dark choice wins on a light OS).
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --bg: #fcfcfb;
+  --bg-sidebar: #f4f3ef;
+  --bg-elevated: #ffffff;
+  --bg-muted: #efeee9;
+  --fg: #0b0b0b;
+  --fg-secondary: #52514e;
+  --fg-muted: #898781;
+  --border: rgba(11, 11, 11, 0.1);
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --accent: #c2410c;
+  --accent-fg: #ffffff;
+  --danger: #b42318;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg: #1a1a19;
+    --bg-sidebar: #141413;
+    --bg-elevated: #232322;
+    --bg-muted: #2a2a28;
+    --fg: #ffffff;
+    --fg-secondary: #c3c2b7;
+    --fg-muted: #898781;
+    --border: rgba(255, 255, 255, 0.1);
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --accent: #e0703f;
+    --accent-fg: #1a1a19;
+    --danger: #f97066;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1a19;
+  --bg-sidebar: #141413;
+  --bg-elevated: #232322;
+  --bg-muted: #2a2a28;
+  --fg: #ffffff;
+  --fg-secondary: #c3c2b7;
+  --fg-muted: #898781;
+  --border: rgba(255, 255, 255, 0.1);
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --accent: #e0703f;
+  --accent-fg: #1a1a19;
+  --danger: #f97066;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-bg-sidebar: var(--bg-sidebar);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-muted: var(--bg-muted);
+  --color-fg: var(--fg);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-muted: var(--fg-muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Assistant answers are markdown. */
+.prose-answer {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.prose-answer p {
+  margin: 0.5em 0;
+}
+.prose-answer strong {
+  font-weight: 600;
+}
+.prose-answer ul,
+.prose-answer ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.prose-answer ul {
+  list-style: disc;
+}
+.prose-answer ol {
+  list-style: decimal;
+}
+.prose-answer table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.prose-answer th,
+.prose-answer td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.4em 0.9em 0.4em 0;
+  text-align: left;
+  white-space: nowrap;
+}
+.prose-answer th {
+  color: var(--fg-secondary);
+  font-weight: 500;
+}
+.prose-answer code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85em;
 }
