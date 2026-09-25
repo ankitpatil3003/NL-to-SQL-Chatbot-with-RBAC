@@ -17,7 +17,7 @@ Browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP + secret h
 | Secrets | Secrets Manager, injected as env vars | generated passwords/JWT in `…/app`; LLM keys in `…/llm`, set by you, never in Terraform state |
 | State | S3 backend (versioned, encrypted, private) with S3-native locking | state holds generated secrets |
 | Streaming | CloudFront origin read timeout 60s + SSE heartbeat every 10s; `/api/*` uncompressed and uncached | long SQL steps can be silent for 25-35s |
-| Inference | Claude in Amazon Bedrock: Haiku 4.5 for understanding/answer/title, Sonnet 5 for SQL; free Nemotron (OpenRouter) as fallback | low latency after deploy, billed to the AWS account (credits); no Anthropic key needed. Bedrock has no `output_config`, so JSON comes from a forced tool call |
+| Inference | Claude in Amazon Bedrock: Haiku 4.5 for understanding/answer/title, Sonnet 5 for SQL; free Nemotron (OpenRouter), then the direct Anthropic API, as fallbacks | low latency after deploy, billed to the AWS account (credits); no Anthropic key needed. Bedrock has no `output_config`, so JSON comes from a forced tool call |
 | Rate limit | 10 questions/hour/user (from turn traces) | caps LLM spend on a public URL |
 
 ## Estimated cost (us-east-2, on-demand, per month)

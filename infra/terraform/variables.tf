@@ -42,10 +42,11 @@ variable "web_memory" {
 # --- App configuration ----------------------------------------------------------------------------
 # Production inference (user decision, paid from AWS credits): Claude in Amazon Bedrock for low
 # latency, Haiku 4.5 for the small steps (understanding, answer, title) and Sonnet 5 for SQL, with
-# free Nemotron on OpenRouter as the fallback when Bedrock fails.
+# free Nemotron on OpenRouter as the fallback, and the direct Anthropic API as the last resort (the
+# first live question hit a Bedrock access error and an Nvidia 503 at the same moment).
 variable "llm_chain" {
   type    = string
-  default = "bedrock:anthropic.claude-haiku-4-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free"
+  default = "bedrock:anthropic.claude-haiku-4-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-haiku-4-5"
 }
 
 # Bedrock's model catalogue differs by region: on first deploy anthropic.claude-sonnet-5 returned 404
@@ -59,7 +60,7 @@ variable "bedrock_region" {
 
 variable "llm_chain_sql" {
   type    = string
-  default = "bedrock:anthropic.claude-sonnet-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free"
+  default = "bedrock:anthropic.claude-sonnet-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-sonnet-5"
 }
 
 variable "chat_rate_limit_per_hour" {
