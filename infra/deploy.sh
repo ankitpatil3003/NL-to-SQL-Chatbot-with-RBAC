@@ -10,6 +10,7 @@
 # Images are tagged with the git commit (plus -dirty for uncommitted changes); ECR tags are
 # immutable, so an already-pushed tag is reused rather than overwritten.
 set -euo pipefail
+export MSYS_NO_PATHCONV=1  # Git Bash on Windows rewrites "/ecs/..." log group names into paths
 cd "$(dirname "$0")/.."
 TF=infra/tf.sh
 REGION="${AWS_REGION:-us-east-2}"
