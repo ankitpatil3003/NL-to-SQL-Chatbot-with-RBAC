@@ -14,9 +14,12 @@ variable "image_tag" {
 }
 
 # --- Sizing: user decision "minimal (~$60/mo)" ---------------------------------------------------
+# db.t4g.micro (1 GB) failed in production: the 2M-row load drained its CPU credits and ~550 MB of
+# sales + indexes couldn't stay cached, so a 50 ms query hit the 15 s statement timeout. small
+# (2 GB, twice the credit rate) keeps the hot data cached (user decision, +~$12/mo).
 variable "db_instance_class" {
   type    = string
-  default = "db.t4g.micro"
+  default = "db.t4g.small"
 }
 
 variable "api_cpu" {

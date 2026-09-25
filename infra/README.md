@@ -12,7 +12,7 @@ Browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP + secret h
 | Region | `us-east-2` | full service coverage, same prices as us-east-1 |
 | HTTPS | CloudFront default domain | free TLS, no domain needed; caches `/_next/static/*` |
 | Origin protection | ALB SG = CloudFront origin-facing prefix list + listener requires `X-Origin-Verify` secret | the CloudFront→ALB leg is HTTP (no certificate without a domain), so nothing else can reach the ALB |
-| Sizing | minimal (~$60/mo) | RDS db.t4g.micro single-AZ; api 0.5 vCPU/1 GB (measured 326 MB idle); web 0.25 vCPU/0.5 GB |
+| Sizing | small (~$73/mo) | RDS db.t4g.small single-AZ (micro's 1 GB couldn't cache the data and ran out of CPU credits after the load); api 0.5 vCPU/1 GB (measured 326 MB idle); web 0.25 vCPU/0.5 GB |
 | No NAT gateway | tasks in public subnets with public IPs, inbound locked to the ALB SG | saves ~$32/mo; RDS stays in private subnets |
 | Secrets | Secrets Manager, injected as env vars | generated passwords/JWT in `…/app`; LLM keys in `…/llm`, set by you, never in Terraform state |
 | State | S3 backend (versioned, encrypted, private) with S3-native locking | state holds generated secrets |
@@ -26,10 +26,10 @@ Browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP + secret h
 |---|---|
 | Fargate api 0.5 vCPU/1 GB + web 0.25 vCPU/0.5 GB | 16 |
 | Application Load Balancer | 17 |
-| RDS db.t4g.micro + 20 GB gp3 | 14 |
+| RDS db.t4g.small + 20 GB gp3 | 26 |
 | Public IPv4 (ALB ×2, tasks ×2) | 11 |
 | Secrets Manager (2), CloudWatch logs, ECR, CloudFront (free tier) | ~3 |
-| **Total** | **~$61** |
+| **Total** | **~$73** |
 
 LLM usage (Bedrock, on top): roughly $0.01-0.02 per question (Sonnet 5 SQL step with the cached
 semantic contract, Haiku for the rest). The 10/hour/user limit bounds it.
