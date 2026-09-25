@@ -3,7 +3,8 @@
 ```
 Browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP + secret header──▶ ALB ─┬─ /*     ▶ ECS web (Next.js)
                                                                                  └─ /api/* ▶ ECS api (FastAPI) ──▶ RDS Postgres 16 (private)
-                                                                                                          └──────▶ OpenRouter / Anthropic
+                                                                                                          ├──────▶ Claude in Amazon Bedrock (task role)
+                                                                                                          └──────▶ OpenRouter (fallback)
 ```
 
 | Decision | Choice | Why |
@@ -16,7 +17,8 @@ Browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP + secret h
 | Secrets | Secrets Manager, injected as env vars | generated passwords/JWT in `…/app`; LLM keys in `…/llm`, set by you, never in Terraform state |
 | State | S3 backend (versioned, encrypted, private) with S3-native locking | state holds generated secrets |
 | Streaming | CloudFront origin read timeout 60s + SSE heartbeat every 10s; `/api/*` uncompressed and uncached | long SQL steps can be silent for 25-35s |
-| Rate limit | 10 questions/hour/user (from turn traces) | protects the free quota and the paid fallback on a public URL |
+| Inference | Claude in Amazon Bedrock: Haiku 4.5 for understanding/answer/title, Sonnet 5 for SQL; free Nemotron (OpenRouter) as fallback | low latency after deploy, billed to the AWS account (credits); no Anthropic key needed. Bedrock has no `output_config`, so JSON comes from a forced tool call |
+| Rate limit | 10 questions/hour/user (from turn traces) | caps LLM spend on a public URL |
 
 ## Estimated cost (us-east-2, on-demand, per month)
 
@@ -29,13 +31,16 @@ Browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP + secret h
 | Secrets Manager (2), CloudWatch logs, ECR, CloudFront (free tier) | ~3 |
 | **Total** | **~$61** |
 
-LLM usage: Nemotron (OpenRouter free tier) serves normal traffic; Claude Sonnet 5 only runs when it fails (~$0.01/question).
+LLM usage (Bedrock, on top): roughly $0.01-0.02 per question (Sonnet 5 SQL step with the cached
+semantic contract, Haiku for the rest). The 10/hour/user limit bounds it.
 
 ## Prerequisites
 
 - Docker (Terraform runs from the `hashicorp/terraform` image via `infra/tf.sh`, nothing to install)
 - AWS CLI v2 with credentials for an account where you can create VPC/ECS/RDS/CloudFront/IAM resources
   (`aws sts get-caller-identity` must succeed)
+- Claude Sonnet 5 and Haiku 4.5 are open to all Bedrock customers; if the first question fails with an
+  access error, enable them under Bedrock → Model access in `us-east-2`
 
 ## First deploy
 
@@ -43,9 +48,10 @@ LLM usage: Nemotron (OpenRouter free tier) serves normal traffic; Claude Sonnet 
 infra/deploy.sh bootstrap        # once: Terraform state bucket -> infra/terraform/backend.hcl
 infra/deploy.sh up               # ~15-20 min the first time (RDS and CloudFront are slow to create)
 
-# Set the LLM keys (they never touch Terraform or the repo):
+# Set the fallback key (it never touches Terraform or the repo). Bedrock needs no key (task role).
+# Keep both fields: ECS refuses to start a task whose secret lacks a referenced key.
 aws secretsmanager put-secret-value --region us-east-2 --secret-id novapharma-nl2sql/llm \
-  --secret-string '{"OPENROUTER_API_KEY":"sk-or-...","ANTHROPIC_API_KEY":"sk-ant-..."}'
+  --secret-string '{"OPENROUTER_API_KEY":"sk-or-...","ANTHROPIC_API_KEY":"unused"}'
 
 infra/deploy.sh load             # generate + load the 2M-row dataset (~3 min), restart the api
 infra/deploy.sh smoke            # 200s through CloudFront; 403 straight to the ALB

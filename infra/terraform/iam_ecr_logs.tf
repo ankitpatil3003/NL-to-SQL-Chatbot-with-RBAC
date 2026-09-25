@@ -74,3 +74,17 @@ resource "aws_iam_role" "task" {
   name               = "${var.project}-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
 }
+
+# The API calls Claude in Amazon Bedrock (bedrock:<model> targets in the LLM chains) as this role.
+resource "aws_iam_role_policy" "task_bedrock" {
+  name = "invoke-claude-on-bedrock"
+  role = aws_iam_role.task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["bedrock-mantle:CreateInference"]
+      Resource = "*" # ponytail: any model; scope to the two model ARNs once their format is pinned
+    }]
+  })
+}

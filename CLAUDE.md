@@ -26,9 +26,9 @@ dataset, with role-based row/column security enforced on every query.
 
 | Area | Decision |
 |---|---|
-| LLM | **Provider-agnostic chain, configured by `LLM_CHAIN`** (`provider:model,...`, per-task overrides `LLM_CHAIN_SQL/_ROUTER/_REWRITE/_ANSWER/_TITLE`). **Default: `openrouter:nvidia/nemotron-3-super-120b-a12b:free` → `anthropic:claude-sonnet-5`**, same chain for all tasks; Claude runs only when Nemotron fails. **Chosen by eval** (`services/api/evals/reports/`, 30 golden cases, SQL step varied): Nemotron 97%, Claude 97% (p50 ~12s vs ~17s), Nex-n2.5-mini 77–87% with empty/truncated outputs. History: Nemotron → Qwen (Qwen 429s upstream) → Nemotron → Nex → Claude → this. The router retries once, then falls back; every attempt is traced. |
+| LLM | **Provider-agnostic chain, configured by `LLM_CHAIN`** (`provider:model,...`, per-task overrides `LLM_CHAIN_SQL/_ROUTER/_REWRITE/_ANSWER/_TITLE`). **Default: `openrouter:nvidia/nemotron-3-super-120b-a12b:free` → `anthropic:claude-sonnet-5`**, same chain for all tasks; Claude runs only when Nemotron fails. **Chosen by eval** (`services/api/evals/reports/`, 30 golden cases, SQL step varied): Nemotron 97%, Claude 97% (p50 ~12s vs ~17s), Nex-n2.5-mini 77–87% with empty/truncated outputs. History: Nemotron → Qwen (Qwen 429s upstream) → Nemotron → Nex → Claude → this. The router retries once, then falls back; every attempt is traced. **Production (AWS, paid from the new account's $200 credits, chosen for answer latency):** Claude in Amazon Bedrock via the ECS task role, `LLM_CHAIN=bedrock:anthropic.claude-haiku-4-5,<nemotron free>` and `LLM_CHAIN_SQL=bedrock:anthropic.claude-sonnet-5,<nemotron free>` (set in Terraform; the local default above is unchanged). Bedrock has no `output_config`, so its JSON comes from a forced tool call. |
 | Database | **PostgreSQL 16 on RDS** (local: Postgres in docker-compose). Extensions: `pgvector`, `pg_trgm`. |
-| Deployment | **AWS ECS Fargate + ALB, Terraform**. RDS in private subnets, secrets in Secrets Manager, images in ECR. |
+| Deployment | **AWS ECS Fargate + ALB, Terraform**, region `us-east-2`, CloudFront default domain for HTTPS (ALB accepts only CloudFront + secret header), minimal sizing (~$61/mo), tasks in public subnets without NAT. RDS in private subnets, secrets in Secrets Manager, images in ECR. See `infra/README.md`. |
 | Stack | **Next.js (App Router, TypeScript) UI** + **FastAPI (Python 3.12) backend**. Two services. |
 | Schema | **The 5 base tables are frozen.** Same names, columns, and semantics, loaded straight from the generator CSVs + `seed_data.sql` users. Only additive, non-destructive objects are allowed: **indexes**, **read-only views** (RBAC scoping), and a separate **`app` schema** for our own tables (chat, credentials, traces, embeddings). Seed data and `generate_data.py` are ours to use. Filling NULLs is optional and must never be required for correctness. |
 | Domain knowledge | **Compiled semantic layer + hybrid retrieval.** A versioned semantic contract that is always in the prompt (prompt-cached), plus pgvector + BM25 retrieval over doc chunks and a curated NL→SQL few-shot bank. |
@@ -64,8 +64,8 @@ Browser ──HTTPS──▶ ALB ─┬─ /*      ──▶ web (Next.js, ECS)
                         └─ /api/*  ──▶ api (FastAPI, ECS) ──▶ RDS Postgres
                                           │                    ├─ public.*   (frozen base tables)
                                           │                    ├─ scoped.*   (RBAC views)
-                                          ├─▶ Anthropic API    └─ app.*      (chat, creds, traces, kb embeddings)
-                                          └─▶ OpenRouter (fallback)
+                                          ├─▶ Bedrock (Claude) └─ app.*      (chat, creds, traces, kb embeddings)
+                                          └─▶ OpenRouter (fallback; Anthropic API locally)
 ```
 
 **Routing:** the ALB sends `/api/*` straight to FastAPI, so the browser sees one origin (httpOnly auth
@@ -108,7 +108,7 @@ db/
   40_knowledge.sql            app.kb_items (vector(384) + tsvector), app.kb_meta
 scripts/
   load_data.py                migrations → data (CSV COPY / seed) → invariants → reader passwords
-infra/terraform/              vpc, rds, ecr, ecs, alb, secrets, iam, cloudwatch — planned (Phase 9)
+infra/terraform/              vpc, rds, ecr, ecs, alb, cloudfront, secrets, iam, logs; infra/deploy.sh, infra/tf.sh
 docker-compose.yml            postgres(pgvector) + api + web for local dev (db on host port 5433)
 DESIGN.md  TESTING.md         deliverables
 ```
@@ -287,7 +287,6 @@ cd apps/web && npx playwright test                         # UI e2e (fast); E2E_
 
 ## 11. Open decisions (ask the user when reached; do not assume)
 
-- HTTPS: custom domain + ACM cert on the ALB, vs CloudFront in front of the ALB with its default domain.
+- Resolved: HTTPS = CloudFront default domain; region `us-east-2`, minimal sizing (~$61/mo); rate limit 10 questions/hour/user; production inference = Claude in Amazon Bedrock (§2).
 - Observability: DB traces only, or also Langfuse/OpenTelemetry.
-- AWS region and monthly cost ceiling; RDS instance size; whether to scale ECS to zero off-hours.
-- Rate limiting / per-user LLM budget on the public URL.
+- Whether to scale ECS to zero off-hours.

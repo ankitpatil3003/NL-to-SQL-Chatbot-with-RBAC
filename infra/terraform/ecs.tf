@@ -54,6 +54,8 @@ resource "aws_ecs_task_definition" "api" {
       { name = "APP_ENV", value = "prod" }, # Secure cookies; refuses a dev JWT secret
       { name = "LOG_LEVEL", value = "INFO" },
       { name = "LLM_CHAIN", value = var.llm_chain },
+      { name = "LLM_CHAIN_SQL", value = var.llm_chain_sql },
+      { name = "BEDROCK_REGION", value = var.region },
       { name = "PUBLIC_URL", value = local.public_url },
       { name = "CHAT_RATE_LIMIT_PER_HOUR", value = tostring(var.chat_rate_limit_per_hour) },
       { name = "DEMO_SHOW_CREDENTIALS", value = "true" },
