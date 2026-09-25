@@ -189,6 +189,33 @@ async def test_anthropic_caches_stable_system_blocks_and_requests_json_schema() 
     assert resp.usage.cost_usd == pytest.approx(0.0048)
 
 
+async def test_bedrock_gets_json_from_a_forced_tool_call() -> None:
+    # Bedrock has no output_config structured outputs: the schema goes in as a forced tool.
+    response = anthropic_response("tool_use")
+    response.content = [SimpleNamespace(type="tool_use", input={"sql": "SELECT 1", "notes": []})]
+    messages = StubMessages(response)
+    provider = AnthropicProvider(
+        client=SimpleNamespace(messages=messages), name="bedrock", json_via_tool=True
+    )
+    resp = await provider.complete("anthropic.claude-sonnet-5", request(SqlOut))
+
+    assert "output_config" not in messages.kwargs
+    assert messages.kwargs["tool_choice"] == {"type": "tool", "name": "emit_result"}
+    assert messages.kwargs["tools"][0]["input_schema"]["additionalProperties"] is False
+    assert json.loads(resp.text) == {"sql": "SELECT 1", "notes": []}
+    assert resp.provider == "bedrock"
+    assert resp.usage.cost_usd == pytest.approx(0.0048)  # `anthropic.` prefix priced
+
+
+def test_factory_registers_bedrock_only_when_a_region_is_set() -> None:
+    from app.llm.factory import build_providers
+
+    base = {"_env_file": None, "openrouter_api_key": None, "anthropic_api_key": None}
+    assert "bedrock" not in build_providers(Settings(**base))  # type: ignore[arg-type]
+    providers = build_providers(Settings(**base, bedrock_region="us-east-2"))  # type: ignore[arg-type]
+    assert providers["bedrock"].name == "bedrock"
+
+
 async def test_anthropic_refusal_is_not_retryable() -> None:
     provider = AnthropicProvider(
         "k", client=SimpleNamespace(messages=StubMessages(anthropic_response("refusal")))

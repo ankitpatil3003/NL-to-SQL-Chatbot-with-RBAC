@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 60.0
     openrouter_api_key: str | None = None
     anthropic_api_key: str | None = None
+    # Enables `bedrock:<model>` targets (Claude in Amazon Bedrock). Auth is the standard AWS
+    # credential chain: the ECS task role in production, a local profile otherwise.
+    bedrock_region: str | None = None
     public_url: str = "http://localhost:3000"
     chat_rate_limit_per_hour: int = 10  # questions per user per hour; 0 disables
 

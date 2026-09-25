@@ -1,6 +1,11 @@
-"""Anthropic Messages API provider (official SDK). Optional: used only when an `anthropic:<model>`
-entry is in LLM_CHAIN and ANTHROPIC_API_KEY is set."""
+"""Anthropic Messages API provider (official SDK), serving two chain prefixes:
 
+- `anthropic:<model>`: the first-party API (ANTHROPIC_API_KEY).
+- `bedrock:<model>`: Claude in Amazon Bedrock (`AsyncAnthropicBedrockMantle`, same Messages API,
+  SigV4-signed with the ECS task role, billed to the AWS account). Bedrock doesn't support
+  `output_config` structured outputs, so JSON comes from a forced tool call instead."""
+
+import json
 import time
 from typing import Any
 
@@ -18,9 +23,11 @@ PRICES: dict[str, tuple[float, float]] = {
 
 
 def _cost(model: str, usage: Usage) -> float | None:
-    if model not in PRICES:
+    # Bedrock IDs carry an `anthropic.` prefix; its global endpoint bills at first-party rates.
+    price = PRICES.get(model.removeprefix("anthropic."))
+    if price is None:
         return None
-    price_in, price_out = PRICES[model]
+    price_in, price_out = price
     return (
         usage.input_tokens * price_in
         + usage.cache_read_tokens * price_in * 0.1
@@ -29,15 +36,34 @@ def _cost(model: str, usage: Usage) -> float | None:
     ) / 1_000_000
 
 
-class AnthropicProvider:
-    name = "anthropic"
+_TOOL = "emit_result"
 
-    def __init__(self, api_key: str, *, timeout_s: float = 60.0, client: Any = None) -> None:
+
+class AnthropicProvider:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        timeout_s: float = 60.0,
+        client: Any = None,
+        name: str = "anthropic",
+        json_via_tool: bool = False,
+    ) -> None:
         # Retries are the router's job (uniform policy + fallback across providers), so the SDK's
         # own retry loop is off.
         self._client = client or anthropic.AsyncAnthropic(
             api_key=api_key, timeout=timeout_s, max_retries=0
         )
+        self.name = name
+        self._json_via_tool = json_via_tool
+
+    @classmethod
+    def bedrock(cls, region: str, *, timeout_s: float = 60.0) -> "AnthropicProvider":
+        """Claude in Amazon Bedrock; credentials from the standard AWS chain (ECS task role)."""
+        client = anthropic.AsyncAnthropicBedrockMantle(
+            aws_region=region, timeout=timeout_s, max_retries=0
+        )
+        return cls(client=client, name="bedrock", json_via_tool=True)
 
     async def complete(self, model: str, request: LLMRequest) -> LLMResponse:
         system: list[dict[str, Any]] = []
@@ -54,32 +80,40 @@ class AnthropicProvider:
             "messages": [{"role": m.role, "content": m.content} for m in request.messages],
         }
         if request.output is not None:
-            kwargs["output_config"] = {
-                "format": {"type": "json_schema", "schema": strict_json_schema(request.output)}
-            }
+            schema = strict_json_schema(request.output)
+            if self._json_via_tool:
+                kwargs["tools"] = [{"name": _TOOL, "description": "Return the result.",
+                                    "input_schema": schema}]  # fmt: skip
+                kwargs["tool_choice"] = {"type": "tool", "name": _TOOL}
+            else:
+                kwargs["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
 
         started = time.perf_counter()
         try:
             response = await self._client.messages.create(**kwargs)
         except anthropic.RateLimitError as exc:
             raise LLMError(
-                f"anthropic rate limited: {exc.message}", retryable=True, status=429
+                f"{self.name} rate limited: {exc.message}", retryable=True, status=429
             ) from exc
         except anthropic.APIStatusError as exc:  # after the more specific classes above
             raise LLMError(
-                f"anthropic HTTP {exc.status_code}: {exc.message}",
+                f"{self.name} HTTP {exc.status_code}: {exc.message}",
                 retryable=exc.status_code >= 500 or exc.status_code in {408, 409},
                 status=exc.status_code,
             ) from exc
         except anthropic.APIConnectionError as exc:  # includes APITimeoutError
-            raise LLMError(f"anthropic connection error: {exc}", retryable=True) from exc
+            raise LLMError(f"{self.name} connection error: {exc}", retryable=True) from exc
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         if response.stop_reason == "refusal":
-            raise LLMError("anthropic refused the request", retryable=False)
-        text = "".join(b.text for b in response.content if b.type == "text")
+            raise LLMError(f"{self.name} refused the request", retryable=False)
+        tool_inputs = [b.input for b in response.content if b.type == "tool_use"]
+        if tool_inputs:
+            text = json.dumps(tool_inputs[0])
+        else:
+            text = "".join(b.text for b in response.content if b.type == "text")
         if not text:
-            raise LLMError("anthropic returned no text", retryable=True)
+            raise LLMError(f"{self.name} returned no text", retryable=True)
 
         u = response.usage
         usage = Usage(

@@ -29,6 +29,10 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         providers["anthropic"] = AnthropicProvider(
             settings.anthropic_api_key, timeout_s=settings.llm_timeout_s
         )
+    if settings.bedrock_region:
+        providers["bedrock"] = AnthropicProvider.bedrock(
+            settings.bedrock_region, timeout_s=settings.llm_timeout_s
+        )
     return providers
 
 
@@ -42,7 +46,7 @@ def build_router(settings: Settings) -> LLMRouter | None:
         usable = [t for t in targets if t.provider in providers]
         for skipped in (t for t in targets if t.provider not in providers):
             log.warning(
-                "LLM chain %r: skipping %s (no API key for %s)", task, skipped, skipped.provider
+                "LLM chain %r: skipping %s (%s is not configured)", task, skipped, skipped.provider
             )
         if usable:
             chains[task] = usable
