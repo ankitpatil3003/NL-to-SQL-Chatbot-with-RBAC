@@ -43,18 +43,17 @@ variable "web_memory" {
 }
 
 # --- App configuration ----------------------------------------------------------------------------
-# Production inference (user decision, paid from AWS credits): Claude in Amazon Bedrock for low
-# latency, Haiku 4.5 for the small steps (understanding, answer, title) and Sonnet 5 for SQL, with
-# free Nemotron on OpenRouter as the fallback, and the direct Anthropic API as the last resort (the
-# first live question hit a Bedrock access error and an Nvidia 503 at the same moment).
+# Production inference (user decision, AWS credits first): OpenAI gpt-oss-120b on Bedrock via the
+# Converse API (no model-access request needed; 40/40 on the golden set, eval report
+# 20260925-152245), then free Nemotron on OpenRouter, then the direct Anthropic API (Haiku 4.5 for
+# the small steps, Sonnet 5 for SQL) as the last resort.
 variable "llm_chain" {
   type    = string
-  default = "bedrock:anthropic.claude-haiku-4-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-haiku-4-5"
+  default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-haiku-4-5"
 }
 
-# Bedrock's model catalogue differs by region: on first deploy anthropic.claude-sonnet-5 returned 404
-# in us-east-2 and Haiku 4.5 wasn't in its console catalogue, while us-east-1 lists both. Inference
-# runs there; the app stays in var.region.
+# Bedrock's model catalogue differs by region; us-east-1 has the widest set (gpt-oss-120b, and the
+# Claude models if access is granted later). Inference runs there; the app stays in var.region.
 # Cross-region adds ~10-15 ms per call; the task role's permission isn't region-scoped.
 variable "bedrock_region" {
   type    = string
@@ -63,7 +62,7 @@ variable "bedrock_region" {
 
 variable "llm_chain_sql" {
   type    = string
-  default = "bedrock:anthropic.claude-sonnet-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-sonnet-5"
+  default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-sonnet-5"
 }
 
 variable "chat_rate_limit_per_hour" {

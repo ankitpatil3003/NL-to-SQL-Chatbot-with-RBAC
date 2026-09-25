@@ -26,7 +26,7 @@ dataset, with role-based row/column security enforced on every query.
 
 | Area | Decision |
 |---|---|
-| LLM | **Provider-agnostic chain, configured by `LLM_CHAIN`** (`provider:model,...`, per-task overrides `LLM_CHAIN_SQL/_ROUTER/_REWRITE/_ANSWER/_TITLE`). **Default: `openrouter:nvidia/nemotron-3-super-120b-a12b:free` → `anthropic:claude-sonnet-5`**, same chain for all tasks; Claude runs only when Nemotron fails. **Chosen by eval** (`services/api/evals/reports/`, 30 golden cases, SQL step varied): Nemotron 97%, Claude 97% (p50 ~12s vs ~17s), Nex-n2.5-mini 77–87% with empty/truncated outputs. History: Nemotron → Qwen (Qwen 429s upstream) → Nemotron → Nex → Claude → this. The router retries once, then falls back; every attempt is traced. **Production (AWS, paid from the new account's $200 credits, chosen for answer latency):** Claude in Amazon Bedrock via the ECS task role, `LLM_CHAIN=bedrock:anthropic.claude-haiku-4-5,<nemotron free>` and `LLM_CHAIN_SQL=bedrock:anthropic.claude-sonnet-5,<nemotron free>` (set in Terraform; the local default above is unchanged). Bedrock has no `output_config`, so its JSON comes from a forced tool call. |
+| LLM | **Provider-agnostic chain, configured by `LLM_CHAIN`** (`provider:model,...`, per-task overrides `LLM_CHAIN_SQL/_ROUTER/_REWRITE/_ANSWER/_TITLE`). **Default: `openrouter:nvidia/nemotron-3-super-120b-a12b:free` → `anthropic:claude-sonnet-5`**, same chain for all tasks; Claude runs only when Nemotron fails. **Chosen by eval** (`services/api/evals/reports/`, 30 golden cases, SQL step varied): Nemotron 97%, Claude 97% (p50 ~12s vs ~17s), Nex-n2.5-mini 77–87% with empty/truncated outputs. History: Nemotron → Qwen (Qwen 429s upstream) → Nemotron → Nex → Claude → this. The router retries once, then falls back; every attempt is traced. **Production (AWS, set in Terraform; AWS credits first, then free, then the user's Anthropic credits):** `bedrock-converse:openai.gpt-oss-120b-1:0` (Bedrock Converse API in us-east-1, task-role auth, no model-access request) → Nemotron free → `anthropic:claude-haiku-4-5` (`claude-sonnet-5` for SQL). Chosen by eval (reports 20260925-*): gpt-oss-120b 40/40, p50 8.6s, $0.06/run; Nova Pro 38/40; Llama 4 Maverick 37/40. Claude on Bedrock was the first plan but needs Anthropic's use-case approval, unlikely soon for a new account. |
 | Database | **PostgreSQL 16 on RDS** (local: Postgres in docker-compose). Extensions: `pgvector`, `pg_trgm`. |
 | Deployment | **AWS ECS Fargate + ALB, Terraform**, region `us-east-2`, CloudFront default domain for HTTPS (ALB accepts only CloudFront + secret header), minimal sizing (~$61/mo), tasks in public subnets without NAT. RDS in private subnets, secrets in Secrets Manager, images in ECR. See `infra/README.md`. |
 | Stack | **Next.js (App Router, TypeScript) UI** + **FastAPI (Python 3.12) backend**. Two services. |
@@ -64,7 +64,7 @@ Browser ──HTTPS──▶ ALB ─┬─ /*      ──▶ web (Next.js, ECS)
                         └─ /api/*  ──▶ api (FastAPI, ECS) ──▶ RDS Postgres
                                           │                    ├─ public.*   (frozen base tables)
                                           │                    ├─ scoped.*   (RBAC views)
-                                          ├─▶ Bedrock (Claude) └─ app.*      (chat, creds, traces, kb embeddings)
+                                          ├─▶ Bedrock (gpt-oss) └─ app.*      (chat, creds, traces, kb embeddings)
                                           └─▶ OpenRouter (fallback; Anthropic API locally)
 ```
 
@@ -287,6 +287,6 @@ cd apps/web && npx playwright test                         # UI e2e (fast); E2E_
 
 ## 11. Open decisions (ask the user when reached; do not assume)
 
-- Resolved: HTTPS = CloudFront default domain; region `us-east-2`, minimal sizing (~$61/mo); rate limit 10 questions/hour/user; production inference = Claude in Amazon Bedrock (§2).
+- Resolved: HTTPS = CloudFront default domain; region `us-east-2`, RDS db.t4g.small after micro timed out (~$73/mo); rate limit 10 questions/hour/user; production inference = gpt-oss-120b on Bedrock (§2).
 - Observability: DB traces only, or also Langfuse/OpenTelemetry.
 - Whether to scale ECS to zero off-hours.

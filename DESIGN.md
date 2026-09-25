@@ -19,7 +19,7 @@ Browser ──HTTPS──▶ CloudFront ──HTTP + secret header──▶ ALB 
                                                                           │
               ┌───────────────────────────────────────────────────────────┤
               ▼                                                           ▼
-   RDS Postgres 16 (private subnets)                          Claude in Amazon Bedrock (task role)
+   RDS Postgres 16 (private subnets)                          Amazon Bedrock: gpt-oss-120b (task role)
      public.*  frozen base tables                             OpenRouter Nemotron (fallback)
      scoped.*  RBAC views (no wac column)
      app.*     credentials, chats, turn traces, knowledge index (pgvector + tsvector)
@@ -187,9 +187,10 @@ scoped executor**, so a RAM's prompt can only ever contain organisations from th
 
 **Provider-agnostic router** (`app/llm/`)
 
-- Everything above `app/llm` uses neutral types; only the adapters touch a vendor SDK. There are two
-  adapters: an OpenAI-compatible httpx adapter (OpenRouter and similar) and an Anthropic SDK adapter.
-  The Anthropic adapter serves both the first-party API and **Claude in Amazon Bedrock**.
+- Everything above `app/llm` uses neutral types; only the adapters touch a vendor SDK. There are three
+  adapters: an OpenAI-compatible httpx adapter (OpenRouter and similar), an Anthropic SDK adapter
+  (the first-party API, and Claude in Amazon Bedrock), and a **Bedrock Converse** adapter for every
+  other Bedrock model family (gpt-oss, Nova, Llama, ...).
 - Chains are configuration: `LLM_CHAIN=provider:model,...`, with per-task overrides
   `LLM_CHAIN_SQL/_ROUTER/_ANSWER/...`.
 - The router retries once on retryable errors (429, 5xx, timeouts, schema-invalid JSON), then falls
@@ -212,13 +213,24 @@ The chains in use:
 
 - **Local and dev default:** Nemotron (free), falling back to Claude Sonnet 5. Normal operation costs
   about $0.
-- **Production, paid from AWS credits:** Claude in Amazon Bedrock. Haiku 4.5 handles understanding,
-  answers and titles; Sonnet 5 writes the SQL; free Nemotron is the fallback. The reason is latency:
-  free-tier p50 is about 18 s per question. There is no Anthropic key in production, because the ECS
-  task role signs requests (`bedrock-mantle:CreateInference`).
-- **Bedrock caveat:** Bedrock's Messages endpoint lacks `output_config` structured outputs. On that
-  provider the schema is sent as a single forced tool call, and the router validates the result the
-  same way.
+- **Production:** AWS credits first, then free, then paid. **OpenAI gpt-oss-120b on Amazon
+  Bedrock** runs every step; free Nemotron is the first fallback; the direct Anthropic API (Haiku
+  4.5, Sonnet 5 for SQL) is the last resort. The ECS task role signs Bedrock calls, so there is no
+  key. It was chosen by a second eval, with each candidate running the whole pipeline alone:
+
+  | Bedrock model | Accuracy | Security | p50 | Cost / 40 cases |
+  |---|---|---|---|---|
+  | **gpt-oss-120b** | **40/40** | **12/12** | 8.6 s | $0.06 |
+  | Nova Pro | 38/40 | 11/12 | 3.1 s | $0.24 |
+  | Llama 4 Maverick | 37/40 | 11/12 | 2.1 s | $0.06 |
+
+  Neither security miss leaked data: one answer had no table, the other grouped in-scope rows
+  wrongly. The database layer keeps even a wrong query inside the user's scope.
+- **How we got here:** the first plan was Claude on Bedrock, which needs Anthropic's use-case
+  approval, unlikely soon for a brand-new account. The Converse adapter covers any other Bedrock
+  model. Converse has no model-independent JSON mode, so the schema goes in the system prompt and
+  the router's validation handles bad output. (For Claude on Bedrock, the Anthropic adapter sends the
+  schema as a forced tool call, because that endpoint lacks `output_config`.)
 
 **Prompt design**
 
@@ -323,12 +335,12 @@ traces, so it survives restarts and chat deletion.
 | Service | Why |
 |---|---|
 | ECS Fargate (api 0.5 vCPU/1 GB, web 0.25/0.5) | Containers without servers to patch; the circuit breaker rolls back a bad image automatically |
-| RDS PostgreSQL 16 (db.t4g.micro, private subnets, SSL forced) | Managed Postgres with pgvector; the security model depends on Postgres features |
+| RDS PostgreSQL 16 (db.t4g.small, private subnets, SSL forced) | Managed Postgres with pgvector; the security model depends on Postgres features |
 | ALB | Path routing `/api/*` → api, else web; long idle timeout for streamed answers |
 | CloudFront (default `*.cloudfront.net` domain) | Free TLS without buying a domain; caches `/_next/static/*`; `/api/*` uncached and uncompressed so SSE flows |
 | Secrets Manager | Generated DB, JWT and reader passwords; LLM keys set out of band, never in Terraform state or the repo |
 | ECR (immutable tags, scan on push) | Images tagged with the git commit |
-| Bedrock | Claude inference billed to the account, authorised by the task role, no API key |
+| Bedrock (Converse, us-east-1) | gpt-oss-120b inference billed to the account's credits, authorised by the task role, no API key |
 | CloudWatch Logs | 14-day retention; turn traces in Postgres cover LLM observability |
 
 Other choices:
@@ -340,7 +352,9 @@ Other choices:
   heartbeat every 10 s while a SQL step runs.
 - **Data load:** runs as a one-off ECS task inside the VPC (`infra/deploy.sh load`), because RDS is
   private.
-- **Cost:** about $61/month plus about $0.01–0.02 per question.
+- **Cost:** about $73/month plus about $0.0015 per question. RDS started as db.t4g.micro, but its 1 GB
+  couldn't cache the data and the load drained its CPU credits, so queries timed out; it is now
+  db.t4g.small.
 - **Tooling:** `infra/deploy.sh` runs `bootstrap | up | load | smoke | down`. Terraform runs from its
   Docker image, so there is nothing to install.
 - **CI** (GitHub Actions): ruff, mypy and tests run on the **full 2M-row dataset**, so the RBAC leak
@@ -389,14 +403,15 @@ Other choices:
 **Trade-offs taken**
 
 - **Latency vs cost.** Free Nemotron matched Claude's accuracy but runs at about 18 s p50. Production
-  pays for Bedrock to be responsive, and keeps free Nemotron as the fallback.
+  uses gpt-oss-120b on Bedrock: 8.6 s p50 at about $0.0015 per question from the AWS credits. Nova Pro
+  and Llama were 3–4× faster but less accurate, and accuracy won.
 - **Market-share formula kept literally**, although this data makes it exceed 100%. Answers explain
   the anomaly instead of silently "fixing" the metric.
 - **Three LLM calls per turn, not five.** Routing, rewriting and titling are merged into one
   structured call.
 - **Exact vector scan, no ANN index.** About 80 items, so an exact scan is faster and has perfect
   recall.
-- **Minimal, single-AZ infrastructure** (one task per service, db.t4g.micro), sized to a demo budget.
+- **Minimal, single-AZ infrastructure** (one task per service, db.t4g.small), sized to a demo budget.
 - **One shared demo password**, for grader convenience. Security rests on server-side scoping, not
   on password secrecy.
 
