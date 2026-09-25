@@ -48,6 +48,15 @@ variable "llm_chain" {
   default = "bedrock:anthropic.claude-haiku-4-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free"
 }
 
+# Bedrock's model catalogue differs by region: on first deploy anthropic.claude-sonnet-5 returned 404
+# in us-east-2 and Haiku 4.5 wasn't in its console catalogue, while us-east-1 lists both. Inference
+# runs there; the app stays in var.region.
+# Cross-region adds ~10-15 ms per call; the task role's permission isn't region-scoped.
+variable "bedrock_region" {
+  type    = string
+  default = "us-east-1"
+}
+
 variable "llm_chain_sql" {
   type    = string
   default = "bedrock:anthropic.claude-sonnet-5,openrouter:nvidia/nemotron-3-super-120b-a12b:free"

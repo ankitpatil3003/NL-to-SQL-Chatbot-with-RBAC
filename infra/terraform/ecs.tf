@@ -55,7 +55,7 @@ resource "aws_ecs_task_definition" "api" {
       { name = "LOG_LEVEL", value = "INFO" },
       { name = "LLM_CHAIN", value = var.llm_chain },
       { name = "LLM_CHAIN_SQL", value = var.llm_chain_sql },
-      { name = "BEDROCK_REGION", value = var.region },
+      { name = "BEDROCK_REGION", value = var.bedrock_region },
       { name = "PUBLIC_URL", value = local.public_url },
       { name = "CHAT_RATE_LIMIT_PER_HOUR", value = tostring(var.chat_rate_limit_per_hour) },
       { name = "DEMO_SHOW_CREDENTIALS", value = "true" },

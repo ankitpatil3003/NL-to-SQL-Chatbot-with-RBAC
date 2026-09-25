@@ -39,8 +39,9 @@ semantic contract, Haiku for the rest). The 10/hour/user limit bounds it.
 - Docker (Terraform runs from the `hashicorp/terraform` image via `infra/tf.sh`, nothing to install)
 - AWS CLI v2 with credentials for an account where you can create VPC/ECS/RDS/CloudFront/IAM resources
   (`aws sts get-caller-identity` must succeed)
-- Claude Sonnet 5 and Haiku 4.5 are open to all Bedrock customers; if the first question fails with an
-  access error, enable them under Bedrock → Model access in `us-east-2`
+- Bedrock: submit Anthropic's one-time **use case details** form (Bedrock console → Model catalog →
+  any Claude model), once per account. Without it every Claude call returns 403 "not available for
+  this account". Inference runs in `us-east-1` (`var.bedrock_region`), which lists both models.
 
 ## First deploy
 
