@@ -247,6 +247,9 @@ def write_report(
     summaries = {name: summarise(res) for name, res in runs.items()}
     payload = {
         "stamp": stamp, "git_commit": git_commit(), "prompt_version": prompt_version,
+        # What ran where no arm overrides it (LLM_CHAIN / LLM_CHAIN_SQL from the environment).
+        "default_chain": get_settings().llm_chain,
+        "default_sql_chain": get_settings().llm_chain_sql,
         "arms": {n: {"sql_chain": chains[n], "summary": summaries[n], "cases": [asdict(r) for r in runs[n]]} for n in runs},
     }  # fmt: skip
     (REPORTS / f"{stamp}.json").write_text(

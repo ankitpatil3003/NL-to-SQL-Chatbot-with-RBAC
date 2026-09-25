@@ -156,7 +156,13 @@ def render(report: dict[str, Any]) -> str:
         "",
         f"- **Golden set:** {summary['passed']}/{summary['cases']} passed ({summary['accuracy']:.0%}) through the real "
         f"pipeline (understanding -> retrieval -> SQL -> guard -> scoped execution -> answer), "
-        f"model chain `{arm['sql_chain'] or 'default'}`.",
+        f"model chain `{report.get('default_chain', 'default')}`"
+        + (
+            f" (SQL step: `{sql}`)"
+            if (sql := arm["sql_chain"] or report.get("default_sql_chain"))
+            else ""
+        )
+        + ".",
         "- **By category:** " + ", ".join(f"{k} {v}" for k, v in summary["by_category"].items()),
         f"- **Latency:** p50 {summary['latency_p50_ms'] / 1000:.1f}s, p95 {summary['latency_p95_ms'] / 1000:.1f}s per question; "
         f"**cost** ${summary['cost_usd_total']:.4f} for the whole run; {summary['fell_back']} model fallback(s).",
