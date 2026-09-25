@@ -48,7 +48,8 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 60.0
     openrouter_api_key: str | None = None
     anthropic_api_key: str | None = None
-    # Enables `bedrock:<model>` targets (Claude in Amazon Bedrock). Auth is the standard AWS
+    # Enables `bedrock:<model>` (Claude in Amazon Bedrock) and `bedrock-converse:<model>` (any
+    # Bedrock model via the Converse API) targets. Auth is the standard AWS
     # credential chain: the ECS task role in production, a local profile otherwise.
     bedrock_region: str | None = None
     public_url: str = "http://localhost:3000"

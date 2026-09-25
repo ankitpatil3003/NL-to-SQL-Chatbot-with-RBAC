@@ -5,6 +5,7 @@ import logging
 from app.core.config import Settings
 from app.llm.anthropic_provider import AnthropicProvider
 from app.llm.base import Provider
+from app.llm.bedrock_converse import BedrockConverseProvider
 from app.llm.openai_compat import OpenAICompatProvider
 from app.llm.router import LLMRouter, Target
 
@@ -31,6 +32,9 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         )
     if settings.bedrock_region:
         providers["bedrock"] = AnthropicProvider.bedrock(
+            settings.bedrock_region, timeout_s=settings.llm_timeout_s
+        )
+        providers["bedrock-converse"] = BedrockConverseProvider(
             settings.bedrock_region, timeout_s=settings.llm_timeout_s
         )
     return providers

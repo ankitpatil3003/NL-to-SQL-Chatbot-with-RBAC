@@ -75,7 +75,8 @@ resource "aws_iam_role" "task" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
 }
 
-# The API calls Claude in Amazon Bedrock (bedrock:<model> targets in the LLM chains) as this role.
+# The API calls Bedrock models as this role: Claude via the Messages endpoint (bedrock-mantle) and
+# every other family via the Converse API (bedrock:InvokeModel, incl. cross-region profiles).
 resource "aws_iam_role_policy" "task_bedrock" {
   name = "invoke-claude-on-bedrock"
   role = aws_iam_role.task.id
@@ -83,7 +84,7 @@ resource "aws_iam_role_policy" "task_bedrock" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["bedrock-mantle:CreateInference"]
+      Action   = ["bedrock-mantle:CreateInference", "bedrock:InvokeModel"]
       Resource = "*" # ponytail: any model; scope to the two model ARNs once their format is pinned
     }]
   })

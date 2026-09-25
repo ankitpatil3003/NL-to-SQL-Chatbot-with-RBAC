@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import pytest
+from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from app.core.config import Settings
@@ -21,6 +22,7 @@ from app.llm.base import (
     parse_json_output,
     strict_json_schema,
 )
+from app.llm.bedrock_converse import BedrockConverseProvider
 from app.llm.factory import build_router
 from app.llm.openai_compat import OpenAICompatProvider
 from app.llm.router import LLMRouter, LLMUnavailable, Target
@@ -223,6 +225,58 @@ async def test_anthropic_refusal_is_not_retryable() -> None:
     with pytest.raises(LLMError) as err:
         await provider.complete("claude-sonnet-5", request())
     assert not err.value.retryable
+
+
+# --- Bedrock Converse provider ----------------------------------------------------------------
+
+
+class StubConverse:
+    def __init__(self, result: Any) -> None:
+        self.result = result
+        self.kwargs: dict[str, Any] = {}
+
+    def converse(self, **kwargs: Any) -> Any:
+        self.kwargs = kwargs
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+async def test_converse_asks_for_json_and_skips_reasoning_blocks() -> None:
+    stub = StubConverse({
+        "output": {"message": {"content": [
+            {"reasoningContent": {"reasoningText": {"text": "thinking..."}}},
+            {"text": '{"sql":"SELECT 1","notes":[]}'},
+        ]}},
+        "usage": {"inputTokens": 1000, "outputTokens": 100},
+    })  # fmt: skip
+    provider = BedrockConverseProvider("us-east-1", client=stub)
+    resp = await provider.complete("openai.gpt-oss-120b-1:0", request(SqlOut))
+
+    assert "JSON schema" in stub.kwargs["system"][-1]["text"]
+    assert stub.kwargs["messages"][0]["content"] == [{"text": "top accounts?"}]
+    assert json.loads(resp.text) == {"sql": "SELECT 1", "notes": []}
+    assert resp.usage.cost_usd == pytest.approx((1000 * 0.15 + 100 * 0.60) / 1e6)
+
+
+@pytest.mark.parametrize(
+    ("code", "status", "retryable"),
+    [
+        ("ThrottlingException", 429, True),
+        ("ServiceUnavailableException", 503, True),
+        ("AccessDeniedException", 403, False),
+        ("ValidationException", 400, False),
+    ],
+)
+async def test_converse_error_classification(code: str, status: int, retryable: bool) -> None:
+    error = ClientError(
+        {"Error": {"Code": code, "Message": "x"}, "ResponseMetadata": {"HTTPStatusCode": status}},
+        "Converse",
+    )
+    provider = BedrockConverseProvider("us-east-1", client=StubConverse(error))
+    with pytest.raises(LLMError) as err:
+        await provider.complete("m", request())
+    assert err.value.retryable is retryable
 
 
 # --- Router ---------------------------------------------------------------------------------------
