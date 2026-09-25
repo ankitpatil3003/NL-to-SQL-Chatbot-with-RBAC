@@ -223,6 +223,13 @@ rules:
       "Oncology vs urology" splits use products.specialty (or sales.specialty, which equals it).
       Strength / NDC-level questions group by products.strength or ndc.
 
+  - id: P-3
+    rule: >-
+      "Generic" means products whose drug_name contains 'GENERIC' (e.g. CARBOPLATIN GENERIC):
+      drug_name LIKE '%GENERIC%'. brand_flag = 0 is NOT "generic": it means any non-NovaPharma
+      product, including branded competitors (e.g. PARAPLATIN, TAXOTERE). "Competitors" =
+      brand_flag = 0; "branded competitors" = brand_flag = 0 AND drug_name NOT LIKE '%GENERIC%'.
+
   # --- Security -----------------------------------------------------------------------------
   - id: SEC-1
     rule: >-
