@@ -57,3 +57,13 @@ def test_wac_sql_lines_are_redacted_but_prose_is_kept() -> None:
         WAC_REDACTED,
         "ORDER BY wac DESC",
     ]
+
+
+def test_plain_language_replaces_raw_column_names() -> None:
+    from app.nl2sql.answer import plain_language
+
+    assert (
+        plain_language("totaled **37,021 pack_units** by period_mo")
+        == "totaled **37,021 units** by month"
+    )
+    assert plain_language("xpack_units stays") == "xpack_units stays"  # whole words only

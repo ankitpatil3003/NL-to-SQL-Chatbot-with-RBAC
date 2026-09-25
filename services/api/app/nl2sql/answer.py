@@ -5,6 +5,7 @@ are computed deterministically here and passed to the model as facts, not left t
 """
 
 import datetime as dt
+import re
 from decimal import Decimal
 from typing import Any
 
@@ -15,6 +16,21 @@ from app.nl2sql.entities import Resolution
 from app.nl2sql.prompts import prompt
 from app.nl2sql.types import ResultTable
 from app.rbac.context import UserContext
+
+# Raw column names models still leak into prose despite the prompt (Nemotron wrote "37,021
+# pack_units" after being told not to). A rule that must hold is enforced in code.
+COLUMN_WORDS = {
+    "pack_units": "units",
+    "total_mg": "mg",
+    "period_mo": "month",
+    "period_qtr": "quarter",
+}
+_COLUMN_RE = re.compile(r"\b(" + "|".join(COLUMN_WORDS) + r")\b")
+
+
+def plain_language(text: str) -> str:
+    return _COLUMN_RE.sub(lambda m: COLUMN_WORDS[m.group(1)], text)
+
 
 PROMPT_ROWS = 30  # rows shown to the answer model; the UI shows the full table
 UI_ROWS = 500

@@ -18,7 +18,7 @@ from app.db.executor import QueryExecutor
 from app.knowledge.base import KnowledgeBase
 from app.knowledge.fewshots import select_examples
 from app.llm.router import LLMRouter, LLMUnavailable
-from app.nl2sql.answer import build_notes, result_table, synthesize
+from app.nl2sql.answer import build_notes, plain_language, result_table, synthesize
 from app.nl2sql.entities import resolve_mentions
 from app.nl2sql.generate import build_context, generate_and_run, redact_wac_sql
 from app.nl2sql.prompts import prompts_hash
@@ -181,16 +181,17 @@ class Pipeline:
             )
         trace.add_llm("answer", answered)
         trace.status = "answered"
-        yield Event("answer_delta", answered.response.text)
+        answer = plain_language(answered.response.text)
+        yield Event("answer_delta", answer)
         yield Event(
             "result",
             TurnResult(
                 status="answered",
-                answer=answered.response.text,
+                answer=answer,
                 standalone_question=standalone,
                 sql=outcome.guarded.sql,
                 table=table,
-                assumptions=draft.assumptions,
+                assumptions=[plain_language(a) for a in draft.assumptions],
                 rules_applied=draft.rules_applied,
                 notes=notes,
             ),

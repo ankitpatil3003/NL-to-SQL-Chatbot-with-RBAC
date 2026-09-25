@@ -4,5 +4,5 @@ Return JSON with:
 - answerable: false only if the data cannot answer the question at all (then sql is "").
 - sql: a single SELECT (CTEs allowed), following the output conventions.
 - rules_applied: ids of the business rules you applied.
-- assumptions: short, user-facing statements of each interpretation you made (time window chosen, level of aggregation, how an ambiguous term was read). Empty if none.
+- assumptions: short statements of each interpretation you made (time window chosen, level of aggregation, how an ambiguous term was read). They are shown to business users, so write them in business language: name periods as months or quarters ("the last 12 months, Oct 2025 - Sep 2026"), never column, table or offset names (not "mo_offset 0-11", not "zip_territory.region_name"). Empty if none.
 - unanswerable_reason: when answerable is false, a short user-facing explanation; otherwise "".
