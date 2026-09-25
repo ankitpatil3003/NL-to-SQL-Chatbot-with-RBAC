@@ -152,10 +152,17 @@ class Pipeline:
         if draft is not None and outcome.unanswerable:
             trace.status = "answered"
             answer = draft.unanswerable_reason or "That question can't be answered from this data."
+            # The scope / WAC notes matter most exactly here ("show me the West region" from a
+            # Northeast director is often declared unanswerable), so they're carried too.
+            notes = build_notes(
+                None, user, asked_for_dollars=intent.asks_for_dollars, resolutions=resolutions
+            )
             yield Event("answer_delta", answer)
             yield Event(
                 "result",
-                TurnResult(status="answered", answer=answer, standalone_question=standalone),
+                TurnResult(
+                    status="answered", answer=answer, standalone_question=standalone, notes=notes
+                ),
             )
             return
         if not outcome.succeeded or outcome.result is None or outcome.guarded is None:
