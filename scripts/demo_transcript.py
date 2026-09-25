@@ -82,7 +82,7 @@ def main(base_url: str) -> None:
         f"Multi-turn conversations with the **deployed app** ({base_url}), one per role, recorded "
         f"{dt.datetime.now(dt.UTC):%Y-%m-%d %H:%M} UTC by `scripts/demo_transcript.py` through the "
         "public URL (demo login, cookie, SSE stream), exactly as the browser does. Answers, tables "
-        "and notes are what the user sees; the generated SQL sits behind the UI's \"Show SQL\". "
+        'and notes are what the user sees; the generated SQL sits behind the UI\'s "Show SQL". '
         "Nothing here is hand-edited.",
     ]
     for email, questions in CONVERSATIONS:
@@ -96,7 +96,7 @@ def main(base_url: str) -> None:
             result, session_id, seconds = ask(client, question, session_id)
             lines += [f"**Turn {n}.** *User:* {question}", ""]
             if result.get("standalone_question") and n > 1:
-                lines += [f"> understood as: \"{result['standalone_question']}\"", ""]
+                lines += [f'> understood as: "{result["standalone_question"]}"', ""]
             lines += [f"*Assistant* ({seconds:.1f}s, `{result.get('status')}`):", ""]
             lines += ["> " + ln for ln in (result.get("answer") or "").splitlines()] + [""]
             lines += table_md(result.get("table") or {})
