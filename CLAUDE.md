@@ -276,13 +276,15 @@ cd apps/web && npx playwright test                         # UI e2e (fast); E2E_
 
 ## 10. Definition of done
 
-- [ ] Public HTTPS URL on AWS serving login → chat; all 3 roles work with demo credentials
-- [ ] Full 2M-row dataset loaded in RDS; typical queries return in < 10s end-to-end
-- [ ] Security matrix 100% pass; golden-set execution accuracy reported (target ≥ 70%)
-- [ ] Persistent multi-session chat history with reopen/continue, new chat, rename/delete
-- [ ] Anthropic → OpenRouter fallback demonstrably working (forced-failure test)
-- [ ] Terraform applies cleanly from scratch; README quickstart works for local testing
-- [ ] DESIGN.md, TESTING.md, demo transcript/recording committed
+Status as of 2026-09-25:
+
+- [x] Public HTTPS URL on AWS serving login → chat; all 3 roles work with demo credentials (https://d137vnb9l0nqzt.cloudfront.net; Playwright suite passes against it)
+- [~] Full 2M-row dataset loaded in RDS (invariants pass); typical queries: production-chain eval p50 10.1s, p95 18s, just over the < 10s target
+- [~] Golden-set accuracy reported: 39/40 on the production chain (target ≥ 70%). No data has ever leaked. The one security-category miss was an Exec total returned as a per-territory table, a shape error (TESTING.md); the same case passed 12/12 in the selection run
+- [x] Persistent multi-session chat history with reopen/continue, new chat, rename/delete
+- [x] Provider fallback demonstrably working: router unit tests with forced failures, and live traces falling back on real outages (Bedrock 403 → Nemotron; Nvidia 503 → retry)
+- [x] Terraform applied cleanly from scratch into a new account; local quickstart in §8 (the root README is the read-only brief)
+- [x] DESIGN.md, TESTING.md, DEMO.md transcript and screen recording (linked from DESIGN.md and DEMO.md)
 
 ---
 

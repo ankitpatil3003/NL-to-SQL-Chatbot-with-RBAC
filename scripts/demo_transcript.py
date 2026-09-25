@@ -4,7 +4,7 @@
 # ///
 """Hold multi-turn conversations with a deployed instance, one per role, and write DEMO.md.
 
-    uv run scripts/demo_transcript.py https://<cloudfront-domain>
+    uv run scripts/demo_transcript.py https://<cloudfront-domain> [<screen-recording URL>]
 
 Goes through the public URL exactly like the browser (demo login, cookie, SSE stream), so the
 transcript is what a user of the live app sees. Nothing in DEMO.md is hand-edited.
@@ -73,12 +73,17 @@ def table_md(table: dict, limit: int = 8) -> list[str]:
     return out
 
 
-def main(base_url: str) -> None:
+def main(base_url: str, video_url: str | None = None) -> None:
     client = httpx.Client(base_url=base_url.rstrip("/"), timeout=180)
     password = client.get("/api/auth/demo-accounts").json()["password"]
     lines = [
         "# Demo transcript",
         "",
+        *(
+            [f"**Screen recording (walkthrough of the live app):** [Video Demo.mp4]({video_url})", ""]
+            if video_url
+            else []
+        ),
         f"Multi-turn conversations with the **deployed app** ({base_url}), one per role, recorded "
         f"{dt.datetime.now(dt.UTC):%Y-%m-%d %H:%M} UTC by `scripts/demo_transcript.py` through the "
         "public URL (demo login, cookie, SSE stream), exactly as the browser does. Answers, tables "
@@ -112,4 +117,4 @@ def main(base_url: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)

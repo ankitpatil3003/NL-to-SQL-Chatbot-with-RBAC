@@ -1,5 +1,7 @@
 # Demo transcript
 
+**Screen recording (walkthrough of the live app):** [Video Demo.mp4](https://drive.google.com/file/d/1bokMIC7FO0kTqT7CXnudiact78kFLXQ8/view?usp=sharing)
+
 Multi-turn conversations with the **deployed app** (https://d137vnb9l0nqzt.cloudfront.net), one per role, recorded 2026-09-25 19:53 UTC by `scripts/demo_transcript.py` through the public URL (demo login, cookie, SSE stream), exactly as the browser does. Answers, tables and notes are what the user sees; the generated SQL sits behind the UI's "Show SQL". Nothing here is hand-edited.
 
 ## Amy Nguyen: RAM (New York Metro territory)

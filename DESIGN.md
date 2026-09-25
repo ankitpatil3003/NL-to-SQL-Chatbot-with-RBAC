@@ -4,9 +4,15 @@ A Claude.ai-style chat app. Commercial users (Exec, Director, RAM) ask questions
 get answers computed by model-written SQL over the 2M-row dataset. Role-based row and column security
 holds on every query, whatever the prompt says.
 
-Companion documents: [`TESTING.md`](TESTING.md) (generated test results),
-[`infra/README.md`](infra/README.md) (deployment runbook and costs), [`CLAUDE.md`](CLAUDE.md) (the
-build contract and every recorded decision). Each change is a Conventional Commit whose body gives the
+| Deliverable | Where |
+|---|---|
+| Live app | https://d137vnb9l0nqzt.cloudfront.net (the demo accounts and shared password are on the login page) |
+| Demo video (~5 min) | [Video Demo.mp4](https://drive.google.com/file/d/1bokMIC7FO0kTqT7CXnudiact78kFLXQ8/view?usp=sharing) |
+| Demo transcript | [`DEMO.md`](DEMO.md): multi-turn conversations per role, recorded from the live app |
+| Test cases & results | [`TESTING.md`](TESTING.md), generated from the production-chain eval run |
+| Infrastructure as code | [`infra/`](infra/) (Terraform + `deploy.sh`); runbook and costs in [`infra/README.md`](infra/README.md) |
+
+Also: [`CLAUDE.md`](CLAUDE.md) (the build contract and every recorded decision). Each change is a Conventional Commit whose body gives the
 reason and the evidence, so `git log` works as a decision log.
 
 ---
