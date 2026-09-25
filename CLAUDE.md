@@ -35,6 +35,7 @@ dataset, with role-based row/column security enforced on every query.
 | Embeddings | **Local `BAAI/bge-small-en-v1.5` (384-dim) via fastembed/ONNX on CPU inside the API container.** No key, no per-call cost, deterministic in tests; ample for 8 docs + ~100 examples. |
 | Auth | **Email + password → JWT in an httpOnly cookie.** bcrypt hashes in `app.credentials`. **One shared demo password for all 23 users** from `DEMO_PASSWORD` (env / Secrets Manager, never in the repo), synced at API startup, and **shown on the login page** (`DEMO_SHOW_CREDENTIALS`) so graders can switch roles quickly. Role and scope are **always resolved server-side** from `public.users` on every request; the JWT carries only the user id. |
 | Chat UX | **Like the Claude.ai web app:** a sidebar of persistent past sessions (reopen any old chat and continue it), a "New chat" button, streaming responses, and auto-generated titles. Chats persist per user across logins. |
+| UI design | **Claude.ai-like, light + dark** (follows the OS, manual toggle). **Charts chosen deterministically from the result shape** (stat tile / line / pivoted multi-line / horizontal bar / table only), no extra LLM call; styling per the data-viz skill's validated palette and mark specs. |
 | Commits | **Conventional Commits, one per completed vertical slice**, on `main`. See §9. |
 
 ---
@@ -75,7 +76,8 @@ cookies and SSE streams need no proxy hop through Next). All FastAPI business ro
 ### 4.1 Repository layout (target)
 
 ```
-apps/web/                     Next.js chat UI (App Router, TS, Tailwind) — chat UI planned (Phase 7)
+apps/web/                     Next.js chat UI: (chat)/layout.tsx hosts ChatShell; login/; components/ (Sidebar,
+                              Message, ResultPanel, ResultChart, Composer); lib/ (api client + SSE, chart choice); e2e/ (Playwright)
 services/api/
   app/
     main.py                   FastAPI app factory + lifespan (engine, executor, LLM router, knowledge)
@@ -94,7 +96,7 @@ services/api/
     nl2sql/                   understand, entities, generate (+ self-repair), answer, pipeline (events),
                               types, prompts/*.md (versioned, hashed into traces)
     observability/trace.py    per-turn trace → app.turn_traces
-    chat/                     sessions/messages service + SSE streaming — planned (Phase 6)
+    chat/                     repository (owner-filtered), service (background turn + queue), SSE router
   evals/                      golden.yaml, compare.py (execution accuracy), run.py (per-model arms),
                               reports/ (committed, one per run)
   tests/                      unit/, integration/ (real Postgres), live/ (real LLM calls, skipped w/o key), fakes.py
@@ -252,6 +254,7 @@ uv run pytest -q                              # unit + integration (+ live LLM t
 uv run python -m app.cli --user amy.nguyen@novapharma.com --sql --trace "question" "follow-up"
 uv run python -m evals.run                    # golden set on the default chain -> evals/reports/
 uv run python -m evals.run --arm a=<chain> --arm b=<chain>   # compare SQL models
+cd apps/web && npx playwright test                         # UI e2e (fast); E2E_LIVE=1 adds a real LLM round trip
 ```
 
 ---
@@ -284,7 +287,6 @@ uv run python -m evals.run --arm a=<chain> --arm b=<chain>   # compare SQL model
 ## 11. Open decisions (ask the user when reached; do not assume)
 
 - HTTPS: custom domain + ACM cert on the ALB, vs CloudFront in front of the ALB with its default domain.
-- Charts in answers (Recharts) in v1, or tables only.
 - Observability: DB traces only, or also Langfuse/OpenTelemetry.
 - AWS region and monthly cost ceiling; RDS instance size; whether to scale ECS to zero off-hours.
 - Rate limiting / per-user LLM budget on the public URL.
