@@ -46,8 +46,10 @@ FULL_EXPECTED = {"organizations": 40_000, "products": 40, "sales": 2_000_000}
 
 
 def database_url() -> str:
+    """Accepts the API's asyncpg URL. RDS (PostgreSQL 15+) forces SSL, which asyncpg spells
+    ?ssl=require and psycopg spells ?sslmode=require."""
     url = os.environ.get("DATABASE_URL", "postgresql://pharma:pharma_dev_pw@localhost:5433/pharma")
-    return url.replace("postgresql+asyncpg://", "postgresql://")
+    return url.replace("postgresql+asyncpg://", "postgresql://").replace("ssl=require", "sslmode=require")
 
 
 def log(msg: str) -> None:
