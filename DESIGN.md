@@ -325,8 +325,10 @@ traces, so it survives restarts and chat deletion.
 - It is **mutation-tested**: removing either view's row filter, leaking `wac` into a view, or granting
   a base table each fails the suite.
 - 322 adversarial guard tests.
-- The eval's security category passes 12/12. It covers RAM, Director and Exec totals, other-territory
-  and other-region asks, a WAC prompt injection, SQL typed as chat, and "drop the sales table".
+- The eval's 12 security cases cover RAM, Director and Exec totals, other-territory and
+  other-region asks, a WAC prompt injection, SQL typed as chat, and "drop the sales table". No run
+  has ever leaked data. The only security-category miss on the production chain was an Exec's
+  total returned as a per-territory table, which is a shape error, not a scope error.
 
 ---
 
@@ -373,9 +375,14 @@ Other choices:
 - **Attack cases** assert what must *not* happen instead: allowed outcomes, values that must not
   appear in any cell, and words banned from the executed SQL.
 - **Per-model comparison:** `--arm` compares SQL models on identical inputs.
-- **Result:** 39/40 on the default chain, with security 12/12. The one miss exposed a contract gap:
-  "generic" was undefined, and the model read `brand_flag = 0` as generic. It was fixed with rule P-3
-  and re-verified.
+- **Result (production chain, report `20260925-160004`, in `TESTING.md`):** 39/40, p50 10.1 s,
+  $0.06 for the run. The miss is analysed in `evals/failure_notes.yaml`. The same model scored
+  40/40 in the selection run. On the earlier free chain (39/40), the miss exposed a contract gap:
+  "generic" was undefined, and the model read `brand_flag = 0` as generic. It was fixed with rule
+  P-3 and re-verified.
+- **Known weakness** (seen in `DEMO.md`): quarter-over-quarter questions can compare the partial
+  current quarter (data to Sep 19) with a full one. The contract should make "complete periods only"
+  the default for growth comparisons.
 - **Eval-driven fixes.** Failures were analysed from traces, and several turned out to be the spec's
   fault rather than the model's:
   - RAM dollar questions were declared unanswerable instead of answered in units;
