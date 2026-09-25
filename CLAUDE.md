@@ -110,7 +110,7 @@ scripts/
   load_data.py                migrations → data (CSV COPY / seed) → invariants → reader passwords
 infra/terraform/              vpc, rds, ecr, ecs, alb, cloudfront, secrets, iam, logs; infra/deploy.sh, infra/tf.sh
 docker-compose.yml            postgres(pgvector) + api + web for local dev (db on host port 5433)
-DESIGN.md  TESTING.md         deliverables
+DESIGN.md  TESTING.md         deliverables (DESIGN.md: architecture, decisions, trade-offs)
 ```
 
 **Module rules:** every stage has a typed input/output (pydantic) and no hidden globals. Providers, retrievers, and executors are injected, so each is swappable and unit-testable with fakes. `docs/`, `schema/`, and `README.md` are never edited.
