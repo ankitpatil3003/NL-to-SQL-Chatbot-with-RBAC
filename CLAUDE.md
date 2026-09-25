@@ -255,6 +255,7 @@ uv run python -m app.cli --user amy.nguyen@novapharma.com --sql --trace "questio
 uv run python -m evals.run                    # golden set on the default chain -> evals/reports/
 uv run python -m evals.run --arm a=<chain> --arm b=<chain>   # compare SQL models
 uv run python -m evals.testing_md            # regenerate TESTING.md from the latest report
+uv run scripts/demo_transcript.py <url>       # (repo root) DEMO.md: live multi-turn conversations per role
 cd apps/web && npx playwright test                         # UI e2e (fast); E2E_LIVE=1 adds a real LLM round trip
 ```
 
