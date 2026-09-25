@@ -216,8 +216,16 @@ def render(report: dict[str, Any]) -> str:
     out += ["## Failures and analysis", ""]
     if not failures:
         out.append("None in this run.")
+    notes_path = HERE / "failure_notes.yaml"
+    analysis = (
+        (yaml.safe_load(notes_path.read_text(encoding="utf-8")) or {})
+        if notes_path.exists()
+        else {}
+    )
     for c in failures:
         out.append(f"- `{c['id']}`: {c['reason']}")
+        if note := analysis.get(report["stamp"], {}).get(c["id"]):
+            out.append(f"  - *Analysis:* {note}")
     return "\n".join(out) + "\n"
 
 

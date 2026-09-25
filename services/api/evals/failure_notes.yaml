@@ -1,0 +1,8 @@
+# Analysis of failed cases, keyed by eval report stamp. Rendered into TESTING.md next to the
+# machine-generated results; the results themselves are never edited.
+20260924-220558:
+  generic-share-platinum: >-
+    Semantic-contract gap, not model noise: the model read brand_flag = 0 as "generic", but that flag
+    means any non-NovaPharma product, including branded competitors (PARAPLATIN), so it returned 100%
+    instead of 69.7%. Fixed by contract rule P-3 (generic = drug_name LIKE '%GENERIC%') in commit
+    829eb7c; the case was re-run live 3/3 after the fix.

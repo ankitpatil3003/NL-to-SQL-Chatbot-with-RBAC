@@ -254,6 +254,7 @@ uv run pytest -q                              # unit + integration (+ live LLM t
 uv run python -m app.cli --user amy.nguyen@novapharma.com --sql --trace "question" "follow-up"
 uv run python -m evals.run                    # golden set on the default chain -> evals/reports/
 uv run python -m evals.run --arm a=<chain> --arm b=<chain>   # compare SQL models
+uv run python -m evals.testing_md            # regenerate TESTING.md from the latest report
 cd apps/web && npx playwright test                         # UI e2e (fast); E2E_LIVE=1 adds a real LLM round trip
 ```
 
