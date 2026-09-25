@@ -29,6 +29,18 @@ class TurnInProgress(Exception):
     """The user already has a question being answered (one at a time per user)."""
 
 
+class RateLimited(Exception):
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"rate limit {limit}/hour")
+        self.limit = limit
+
+
+# Idle SSE streams get cut by proxies: CloudFront drops a response when the origin is silent
+# for its read timeout. A SQL step can be quiet for 25-35s, so a comment line goes out every
+# HEARTBEAT_S seconds while waiting.
+HEARTBEAT_S = 10.0
+
+
 def result_payload(result: TurnResult) -> dict[str, Any]:
     """What the UI needs to redraw an assistant message later (table, SQL, notes...)."""
     return {
@@ -49,9 +61,18 @@ def fallback_title(question: str) -> str:
 
 
 class ChatService:
-    def __init__(self, repo: ChatRepository, pipeline: Pipeline) -> None:
+    def __init__(
+        self,
+        repo: ChatRepository,
+        pipeline: Pipeline,
+        *,
+        rate_limit_per_hour: int = 0,
+        heartbeat_s: float = HEARTBEAT_S,
+    ) -> None:
         self._repo = repo
         self._pipeline = pipeline
+        self._rate_limit = rate_limit_per_hour  # 0 = unlimited
+        self._heartbeat_s = heartbeat_s
         self._active: set[str] = set()  # user ids with a turn in flight (per API instance)
         self._tasks: set[asyncio.Task[None]] = set()  # strong refs: running turns aren't GC'd
 
@@ -60,6 +81,10 @@ class ChatService:
     ) -> AsyncIterator[dict[str, Any]]:
         if user.user_id in self._active:
             raise TurnInProgress
+        # Counted from turn traces, not memory: survives restarts and multiple API tasks, and
+        # deleting chats can't reset it (traces outlive their chats).
+        if self._rate_limit and await self._repo.turns_last_hour(user.user_id) >= self._rate_limit:
+            raise RateLimited(self._rate_limit)
         if session_id is None:
             session_id = await self._repo.create_session(user.user_id)
         elif await self._repo.get_session(user.user_id, session_id) is None:
@@ -72,7 +97,14 @@ class ChatService:
         task.add_done_callback(self._tasks.discard)
 
         yield {"event": "session", "data": {"session_id": session_id}}
-        while (item := await queue.get()) is not None:
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=self._heartbeat_s)
+            except TimeoutError:
+                yield {"event": "ping", "data": None}
+                continue
+            if item is None:
+                return
             yield item
 
     async def _run(

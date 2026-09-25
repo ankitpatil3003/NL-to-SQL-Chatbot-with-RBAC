@@ -211,3 +211,66 @@ async def test_one_turn_at_a_time_and_disconnects_still_save_the_answer(settings
     await repo.delete(user.user_id, session["data"]["session_id"])
     await executor.dispose()
     await engine.dispose()
+
+
+async def _service_env(settings: Settings, **kw: Any):  # type: ignore[no-untyped-def]
+    from app.db.engine import build_engine
+    from app.db.executor import QueryExecutor
+    from app.knowledge.base import init_knowledge
+    from app.rbac.context import build_user_context
+
+    engine = build_engine(settings)
+    executor = QueryExecutor(settings)
+    kb = await init_knowledge(engine, settings.knowledge_docs_dir, settings.embed_cache_dir)
+    llm, fake = scripted_router()
+    repo = ChatRepository(engine)
+    async with engine.connect() as conn:
+        row = (
+            (await conn.execute(text("SELECT * FROM public.users WHERE email = :e"), {"e": RAM}))
+            .mappings()
+            .one()
+        )
+    user = build_user_context(dict(row))
+    return engine, executor, kb, llm, fake, repo, user
+
+
+async def test_hourly_rate_limit_counts_traces(settings: Settings) -> None:
+    from app.chat.service import RateLimited
+
+    engine, executor, kb, llm, fake, repo, user = await _service_env(settings)
+    already = await repo.turns_last_hour(user.user_id)
+    service = ChatService(
+        repo, Pipeline(llm, kb, executor, engine, max_rows=100), rate_limit_per_hour=already + 1
+    )
+    script_turn(fake, "Units by drug?")
+    events = [e async for e in service.stream_turn(user, None, "units by drug?")]
+    assert events[-1]["event"] == "done"
+    with pytest.raises(RateLimited):  # the turn above was the last one allowed this hour
+        await anext(service.stream_turn(user, None, "one more"))
+    await repo.delete(user.user_id, events[0]["data"]["session_id"])
+    assert (
+        await repo.turns_last_hour(user.user_id) == already + 1
+    )  # deleting chats doesn't reset it
+    await executor.dispose()
+    await engine.dispose()
+
+
+async def test_idle_streams_get_heartbeats(settings: Settings) -> None:
+    import asyncio
+
+    from app.nl2sql.types import Event, TurnResult
+
+    engine, executor, _kb, _llm, _fake, repo, user = await _service_env(settings)
+
+    class SlowPipeline:  # stands in for a SQL step that is silent for a while
+        async def run(self, question, history, user, *, session_id=None):  # type: ignore[no-untyped-def]
+            await asyncio.sleep(0.35)
+            yield Event("result", TurnResult(status="answered", answer="ok", title="Slow"))
+
+    service = ChatService(repo, SlowPipeline(), heartbeat_s=0.1)  # type: ignore[arg-type]
+    events = [e["event"] async for e in service.stream_turn(user, None, "slow?")]
+    assert events.count("ping") >= 2 and events[-1] == "done"
+    sessions = await repo.list_sessions(user.user_id)
+    await repo.delete(user.user_id, sessions[0].session_id)
+    await executor.dispose()
+    await engine.dispose()

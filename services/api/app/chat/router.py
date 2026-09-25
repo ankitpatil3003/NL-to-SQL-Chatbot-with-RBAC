@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.auth.deps import CurrentUser
 from app.chat.repository import ChatRepository
-from app.chat.service import ChatService, SessionNotFound, TurnInProgress
+from app.chat.service import ChatService, RateLimited, SessionNotFound, TurnInProgress
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -114,6 +114,8 @@ async def delete_session(session_id: UUID, request: Request, user: CurrentUser) 
 
 
 def _sse(event: dict[str, Any]) -> str:
+    if event["event"] == "ping":
+        return ": ping\n\n"  # SSE comment: keeps proxies from closing an idle stream
     return f"event: {event['event']}\ndata: {json.dumps(event['data'], default=str)}\n\n"
 
 
@@ -131,6 +133,11 @@ async def stream_turn(body: TurnIn, request: Request, user: CurrentUser) -> Stre
         first = await anext(events)  # surfaces ownership / concurrency errors as HTTP status codes
     except SessionNotFound:
         raise _not_found() from None
+    except RateLimited as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"You've reached the limit of {exc.limit} questions per hour. Please try again later.",
+        ) from None
     except TurnInProgress:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "A question is already being answered"

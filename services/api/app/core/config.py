@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     anthropic_api_key: str | None = None
     public_url: str = "http://localhost:3000"
+    chat_rate_limit_per_hour: int = 10  # questions per user per hour; 0 disables
 
     # --- Knowledge ---------------------------------------------------------------------------
     knowledge_docs_dir: Path = Field(default_factory=_repo_docs_dir)

@@ -150,7 +150,7 @@ export default function ChatShell() {
       } else {
         const msg =
           e instanceof ApiError && e.status === 429
-            ? "Please wait for the current answer to finish."
+            ? e.message // "A question is already being answered" or the hourly limit
             : e instanceof ApiError && e.status === 503
               ? "The assistant isn't configured on the server."
               : e instanceof ApiError && e.status === 401

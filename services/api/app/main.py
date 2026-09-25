@@ -64,7 +64,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.engine,
                 max_rows=settings.query_row_limit,
             )
-            app.state.chat = ChatService(ChatRepository(app.state.engine), pipeline)
+            app.state.chat = ChatService(
+                ChatRepository(app.state.engine),
+                pipeline,
+                rate_limit_per_hour=settings.chat_rate_limit_per_hour,
+            )
         if settings.demo_password:
             # Non-fatal, like the knowledge layer: if the database is briefly unreachable at boot
             # (e.g. RDS still starting during a deploy), serve /health instead of crash-looping.
