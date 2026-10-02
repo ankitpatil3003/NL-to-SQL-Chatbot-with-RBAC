@@ -337,3 +337,31 @@ def test_capped_result_reports_true_count_and_pages_through_everything(capped_ap
     assert client.get(f"/api/chat/messages/{message_id}/export").status_code == 404
     client.cookies.clear()
     assert client.get(f"/api/chat/messages/{message_id}/rows").status_code == 401
+
+
+def test_turns_are_checkpointed_per_chat_in_the_app_schema(settings: Settings) -> None:
+    """The real lifespan wiring: the API's Postgres checkpointer keeps graph state per chat."""
+    app = create_app(settings)
+    with TestClient(app) as client:
+        state = app.state
+        llm, fake = scripted_router()
+        checkpointer = state.chat._pipeline._graph.checkpointer  # the one the lifespan opened
+        assert checkpointer is not None
+        pipeline = Pipeline(
+            llm, state.knowledge, state.executor, state.engine, max_rows=1000,
+            checkpointer=checkpointer,
+        )  # fmt: skip
+        state.chat = ChatService(ChatRepository(state.engine), pipeline)
+        login(client, RAM)
+        script_turn(fake, "Units by drug?")
+        session_id = stream(client, "units by drug?")[0][1]["session_id"]
+
+        async def saved() -> Any:
+            return await checkpointer.aget_tuple({"configurable": {"thread_id": session_id}})
+
+        snapshot = client.portal.call(saved)  # type: ignore[union-attr]
+        assert snapshot is not None
+        values = snapshot.checkpoint["channel_values"]
+        assert values["result"].status == "answered" and values["table"].row_count > 0
+        assert "user" not in values  # identity is per-run context, never checkpointed
+        client.delete(f"/api/chat/sessions/{session_id}")

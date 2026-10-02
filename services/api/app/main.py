@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -17,6 +17,7 @@ from app.db.engine import build_engine
 from app.db.executor import QueryExecutor
 from app.knowledge.base import init_knowledge
 from app.llm.factory import build_router
+from app.nl2sql.checkpoint import postgres_checkpointer
 from app.nl2sql.pipeline import Pipeline
 
 log = logging.getLogger("app")
@@ -49,6 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        resources = AsyncExitStack()
         app.state.engine = build_engine(settings)
         app.state.executor = QueryExecutor(settings)
         app.state.llm = build_router(settings)  # None when no LLM provider key is configured
@@ -57,12 +59,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.chat = None  # the assistant needs both an LLM and the knowledge layer
         if app.state.llm is not None and app.state.knowledge is not None:
+            try:  # non-fatal: without it turns still run, they just can't pause and resume
+                checkpointer = await resources.enter_async_context(
+                    postgres_checkpointer(settings.database_url)
+                )
+            except Exception:
+                log.exception("graph checkpointer unavailable; turns run without checkpoints")
+                checkpointer = None
             pipeline = Pipeline(
                 app.state.llm,
                 app.state.knowledge,
                 app.state.executor,
                 app.state.engine,
                 max_rows=settings.query_row_limit,
+                checkpointer=checkpointer,
             )
             app.state.chat = ChatService(
                 ChatRepository(app.state.engine),
@@ -81,6 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await resources.aclose()
             if app.state.llm is not None:
                 await app.state.llm.aclose()
             await app.state.executor.dispose()

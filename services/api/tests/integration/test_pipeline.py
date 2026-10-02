@@ -13,7 +13,8 @@ from app.db.executor import QueryExecutor
 from app.knowledge.base import init_knowledge
 from app.llm.base import LLMError
 from app.nl2sql.generate import WAC_REDACTED, WAC_SQL
-from app.nl2sql.pipeline import FAILED, UNAVAILABLE, Pipeline, ask
+from app.nl2sql.graph import FAILED
+from app.nl2sql.pipeline import UNAVAILABLE, Pipeline, ask
 from app.nl2sql.types import HistoryTurn, Mention, SqlDraft, Understanding
 
 from ..fakes import ScriptedProvider, scripted_router

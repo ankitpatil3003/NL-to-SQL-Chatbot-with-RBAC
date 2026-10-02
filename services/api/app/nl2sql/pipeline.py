@@ -1,44 +1,35 @@
-"""The NL-to-SQL turn, end to end (CLAUDE.md §4.2):
-
-  understand -> (non-data intents answered directly)
-             -> retrieve docs + role-filtered examples -> resolve entities
-             -> generate SQL -> guard -> scoped execute -> self-repair
-             -> answer synthesis -> trace
+"""Runs one NL-to-SQL turn through the LangGraph graph (app/nl2sql/graph.py) and traces it.
 
 Yields Events as it goes (stage progress, answer text, final result) so the chat API can stream
 them. Every turn, including failures, is traced to app.turn_traces.
 """
 
 import logging
+import uuid
 from collections.abc import AsyncIterator
+from typing import Literal
 
+from langchain_core.runnables import RunnableConfig
+from langgraph.types import Checkpointer
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.db.executor import QueryExecutor, QueryFailed
+from app.db.executor import QueryExecutor
 from app.knowledge.base import KnowledgeBase
-from app.knowledge.fewshots import select_examples
 from app.llm.router import LLMRouter, LLMUnavailable
-from app.nl2sql.answer import build_notes, plain_language, result_table, synthesize
-from app.nl2sql.entities import resolve_mentions
-from app.nl2sql.generate import build_context, generate_and_run, redact_wac_sql
+from app.nl2sql.graph import TurnDeps, build_graph, new_turn
 from app.nl2sql.prompts import prompts_hash
 from app.nl2sql.types import Event, HistoryTurn, TurnResult
-from app.nl2sql.understand import understand
 from app.observability.trace import TurnTrace, save_trace
 from app.rbac.context import UserContext
 
 log = logging.getLogger(__name__)
 
-DOC_CHUNKS = 3
-EXAMPLES = 4
+# custom: the Events nodes emit; values: the state after each step (the final one has the result)
+STREAM_MODES: list[Literal["custom", "values"]] = ["custom", "values"]
 
 UNAVAILABLE = (
     "The assistant is temporarily unavailable (the language models didn't respond). "
     "Please try again in a minute."
-)
-FAILED = (
-    "I couldn't build a working query for that question. Try rephrasing it, or be more "
-    "specific about the product, time period or accounts you mean."
 )
 UNEXPECTED = "Something went wrong while answering that. Please try again or rephrase."
 
@@ -52,12 +43,16 @@ class Pipeline:
         engine: AsyncEngine,
         *,
         max_rows: int,
+        checkpointer: Checkpointer = None,
     ) -> None:
         self._llm = llm
         self._kb = kb
         self._executor = executor
         self._engine = engine
         self._max_rows = max_rows
+        self._graph = build_graph(checkpointer)
+        # checkpoint once, when the turn ends or pauses (not after every node)
+        self._durability: Literal["exit"] | None = "exit" if checkpointer else None
         self.prompt_version = f"p{prompts_hash()}-c{kb.contract.content_hash}"
 
     async def run(
@@ -69,13 +64,25 @@ class Pipeline:
         session_id: str | None = None,
     ) -> AsyncIterator[Event]:
         trace = TurnTrace(user.user_id, question, self.prompt_version, session_id)
+        deps = TurnDeps(user, trace, self._llm, self._kb, self._executor, self._max_rows)
+        # One checkpoint thread per chat: a paused turn resumes in the chat it was asked in.
+        config: RunnableConfig = {
+            "configurable": {"thread_id": session_id or f"adhoc-{uuid.uuid4()}"}
+        }
         try:
             result = None
-            async for event in self._turn(question, history, user, trace):
-                if event.type == "result":
-                    result = event.data
-                else:
-                    yield event
+            async for mode, chunk in self._graph.astream(
+                new_turn(question, history),
+                config,
+                context=deps,
+                stream_mode=STREAM_MODES,
+                durability=self._durability,
+            ):
+                if mode == "custom":
+                    assert isinstance(chunk, Event)
+                    yield chunk
+                elif isinstance(chunk, dict) and "result" in chunk:
+                    result = chunk["result"]
         except LLMUnavailable as exc:
             trace.status, trace.error = "error", str(exc)
             result = TurnResult(status="error", answer=UNAVAILABLE)
@@ -90,134 +97,6 @@ class Pipeline:
         except Exception:
             log.exception("could not save trace")
         yield Event("result", result)
-
-    async def _turn(
-        self, question: str, history: list[HistoryTurn], user: UserContext, trace: TurnTrace
-    ) -> AsyncIterator[Event]:
-        yield Event("stage", "understanding")
-        with trace.stage("understand"):
-            intent, routed = await understand(self._llm, question, history, user)
-        trace.add_llm("router", routed)
-        trace.detail["understanding"] = intent.model_dump()
-
-        if intent.intent != "data_question":
-            status = {"clarify": "clarification", "out_of_scope": "refused"}.get(
-                intent.intent, "answered"
-            )
-            trace.status = status
-            yield Event("answer_delta", intent.reply)
-            yield Event("result", TurnResult(status=status, answer=intent.reply))  # type: ignore[arg-type]
-            return
-
-        standalone = intent.standalone_question or question
-        yield Event("stage", "retrieving")
-        with trace.stage("retrieve"):
-            docs = await self._kb.retriever.search(standalone, "doc", k=DOC_CHUNKS)
-            if not user.can_view_wac:
-                docs = redact_wac_sql(docs)
-            examples = await select_examples(self._kb.retriever, standalone, user, k=EXAMPLES)
-            resolutions = await resolve_mentions(
-                intent.mentions, self._kb.catalog, self._executor, user
-            )
-        trace.detail["retrieval"] = {
-            "docs": [{"id": d.item_id, "ranks": d.ranks} for d in docs],
-            "examples": [{"id": e.example.id, "ranks": e.ranks} for e in examples],
-        }
-        trace.detail["entities"] = [r.hint() for r in resolutions]
-
-        yield Event("stage", "writing_sql")
-        previous = history[-1] if intent.is_follow_up and history else None
-        context = build_context(
-            standalone,
-            docs=docs,
-            examples=examples,
-            resolutions=resolutions,
-            previous=previous,
-            volume_instead_of_dollars=intent.asks_for_dollars and not user.can_view_wac,
-        )
-        with trace.stage("sql"):
-            outcome = await generate_and_run(
-                self._llm, self._kb, self._executor, user, context, max_rows=self._max_rows
-            )
-        for call in outcome.llm_calls:
-            trace.add_llm("sql", call)
-        trace.detail["sql_attempts"] = [
-            {"sql": a.sql, "failed_at": a.failed_at, "error": a.error, "autofixes": a.autofixes}
-            for a in outcome.attempts
-        ]
-        if outcome.attempts:
-            trace.sql_generated = outcome.attempts[-1].sql
-
-        draft = outcome.draft
-        if draft is not None and outcome.unanswerable:
-            trace.status = "answered"
-            answer = draft.unanswerable_reason or "That question can't be answered from this data."
-            # The scope / WAC notes matter most exactly here ("show me the West region" from a
-            # Northeast director is often declared unanswerable), so they're carried too.
-            notes = build_notes(
-                None, user, asked_for_dollars=intent.asks_for_dollars, resolutions=resolutions
-            )
-            yield Event("answer_delta", answer)
-            yield Event(
-                "result",
-                TurnResult(
-                    status="answered", answer=answer, standalone_question=standalone, notes=notes
-                ),
-            )
-            return
-        if not outcome.succeeded or outcome.result is None or outcome.guarded is None:
-            trace.status, trace.error = "error", "SQL attempts exhausted"
-            yield Event("answer_delta", FAILED)
-            yield Event(
-                "result", TurnResult(status="error", answer=FAILED, standalone_question=standalone)
-            )
-            return
-
-        trace.sql_executed = outcome.guarded.sql
-        total = None
-        capped = outcome.guarded.limit_applied and len(outcome.result.rows) >= self._max_rows
-        if capped or outcome.result.truncated:
-            with trace.stage("count"):
-                total = await self._count(user, outcome.guarded.full_sql)
-        table = result_table(outcome.result, total)
-        trace.row_count = table.row_count
-        assert draft is not None
-        notes = build_notes(
-            table, user, asked_for_dollars=intent.asks_for_dollars, resolutions=resolutions
-        )
-
-        yield Event("stage", "answering")
-        with trace.stage("answer"):
-            answered = await synthesize(
-                self._llm, standalone, user, table, assumptions=draft.assumptions, notes=notes
-            )
-        trace.add_llm("answer", answered)
-        trace.status = "answered"
-        answer = plain_language(answered.response.text)
-        yield Event("answer_delta", answer)
-        yield Event(
-            "result",
-            TurnResult(
-                status="answered",
-                answer=answer,
-                standalone_question=standalone,
-                sql=outcome.guarded.sql,
-                query=outcome.guarded.full_sql,
-                table=table,
-                assumptions=[plain_language(a) for a in draft.assumptions],
-                rules_applied=draft.rules_applied,
-                notes=notes,
-            ),
-        )
-
-    async def _count(self, user: UserContext, full_sql: str) -> int | None:
-        """True size of a capped result. Validated SQL, run as the same user; best effort."""
-        try:
-            counted = await self._executor.run(user, f"SELECT count(*) FROM ({full_sql}) AS q")
-            return int(counted.rows[0][0])
-        except QueryFailed:
-            log.warning("row count failed", exc_info=True)
-            return None
 
 
 async def ask(

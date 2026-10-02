@@ -95,6 +95,16 @@ question ─▶ 1 context      UserContext from public.users (role, territory/re
          ─▶ 9 trace        every stage, model call, SQL attempt, token and cent → app.turn_traces
 ```
 
+**Orchestration: LangGraph** (`nl2sql/graph.py`). The stages are nodes of a state graph:
+understand branches to a direct reply or to retrieve → sql, and sql branches to answer, explain
+(unanswerable) or fail. The graph state is checkpointed per chat (thread id = session id) by
+`AsyncPostgresSaver`, in `app.checkpoint*`, on the API's own login, which the reader roles can't
+reach. A turn can therefore pause for the user and resume later. Only allowlisted types are
+deserialised from a checkpoint. Identity, the model router, the executor and the trace are never
+checkpointed: they travel in LangGraph's per-run context, and the user is re-resolved from
+`public.users` on every request. The guard and the scoped executor remain the only way any node
+reaches data.
+
 Each stage is a module with typed inputs and outputs. Providers, retriever and executor are injected,
 so every stage runs in tests against fakes or the real database. The same `Pipeline` serves the SSE
 endpoint, the CLI (`python -m app.cli --user <email> "q1" "q2"`) and the eval harness, so what gets
