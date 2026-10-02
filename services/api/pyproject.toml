@@ -51,7 +51,7 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["boto3", "botocore.*"]  # no stubs shipped; used only in app/llm/bedrock_converse.py
+module = ["boto3", "botocore.*", "asyncpg"]  # no stubs shipped (bedrock_converse.py, executor.py)
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

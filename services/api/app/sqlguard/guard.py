@@ -91,9 +91,44 @@ class GuardedQuery:
     tables: frozenset[str]  # base tables referenced
     limit_applied: bool  # the guard added or lowered the LIMIT
     autofixes: tuple[str, ...] = ()  # deterministic repairs applied (recorded in traces)
+    full_sql: str = ""  # validated, before the row cap: what counting, paging and export re-run
 
 
 def guard(sql: str, user: UserContext, *, max_rows: int) -> GuardedQuery:
+    root, tables, autofixes = _validated(sql, user)
+    full_sql = root.sql(dialect=DIALECT)
+    limit_applied = _enforce_limit(root, max_rows)
+    return GuardedQuery(
+        root.sql(dialect=DIALECT), frozenset(tables), limit_applied, autofixes, full_sql
+    )
+
+
+def page_query(sql: str, user: UserContext, *, offset: int, limit: int, ncols: int) -> str:
+    """One page of a stored query, re-validated for the user asking now (their access may have
+    changed since). Postgres promises no order without ORDER BY, and ties in an existing ORDER BY
+    can move rows between pages, so every output column (by position) breaks ties."""
+    root, _, _ = _validated(sql, user)
+    assert isinstance(root, exp.Select | exp.SetOperation)
+    order = root.args.get("order")
+    keys = [*(order.expressions if order else [])]
+    keys += [exp.Ordered(this=exp.Literal.number(i)) for i in range(1, ncols + 1)]
+    root.set("order", exp.Order(expressions=keys))
+    own_offset = _literal(root.args.get("offset"), "expression")
+    limit_node = root.args.get("limit")
+    own_limit = _literal(limit_node, "count" if isinstance(limit_node, exp.Fetch) else "expression")
+    if own_limit is not None:  # the query's own LIMIT n still bounds what can be paged
+        limit = max(0, min(limit, own_limit - offset))
+    root.limit(limit, copy=False)
+    root.offset(offset + (own_offset or 0), copy=False)
+    return root.sql(dialect=DIALECT)
+
+
+def _literal(node: exp.Expr | None, arg: str) -> int | None:
+    value = node.args.get(arg) if node is not None else None
+    return int(value.this) if isinstance(value, exp.Literal) and value.is_int else None
+
+
+def _validated(sql: str, user: UserContext) -> tuple[exp.Expr, set[str], tuple[str, ...]]:
     root = _parse_single(sql)
     _check_is_read_only_query(root)
     tables = _check_tables(root)
@@ -101,9 +136,7 @@ def guard(sql: str, user: UserContext, *, max_rows: int) -> GuardedQuery:
     if not user.can_view_wac:
         _check_no_wac(root)
     _check_no_wall_clock(root)
-    autofixes = _autofix(root)
-    limit_applied = _enforce_limit(root, max_rows)
-    return GuardedQuery(root.sql(dialect=DIALECT), frozenset(tables), limit_applied, autofixes)
+    return root, tables, _autofix(root)
 
 
 def _parse_single(sql: str) -> exp.Expr:

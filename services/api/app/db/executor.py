@@ -13,9 +13,11 @@ even if L3 is bypassed: the scoped login can't see wac, base tables, users or ap
 re-scope, switch role, or write.
 """
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
+import asyncpg
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -76,16 +78,9 @@ class QueryExecutor:
     ) -> QueryResult:
         """Run `sql` as `user`. `params` is only for the pipeline's own lookup queries (bound
         parameters); LLM-written SQL is always run without params."""
-        engine = self._exec if user.scope is None else self._scoped
-        async with engine.connect() as conn:
+        async with self._engine(user).connect() as conn:
             try:
-                await conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(self._timeout_ms)}")
-                if user.scope is not None:
-                    await conn.execute(
-                        text("SELECT rbac.set_scope(:level, :value)"),
-                        {"level": user.scope.level, "value": user.scope.value},
-                    )
-                await conn.exec_driver_sql("SET LOCAL transaction_read_only = on")
+                await self._seal(conn, user)
                 if params is None:
                     result = await conn.exec_driver_sql(sql)
                 else:
@@ -102,6 +97,45 @@ class QueryExecutor:
                 raise _query_failed(exc) from exc
             finally:
                 await conn.rollback()
+
+    async def stream(
+        self, user: UserContext, sql: str, *, batch: int = 2_000
+    ) -> AsyncIterator[list[Any]]:
+        """Run `sql` as `user` through a server-side cursor: yields the column names, then row
+        batches, so an export never holds the whole result in memory. Same seal as run()."""
+        async with self._engine(user).connect() as conn:
+            try:
+                await self._seal(conn, user)
+                # asyncpg directly: a cursor inside the transaction SQLAlchemy just opened, and
+                # no bind-parameter parsing of the SQL text (":" in a literal stays a literal).
+                driver = (await conn.get_raw_connection()).driver_connection
+                assert driver is not None
+                statement = await driver.prepare(sql)
+                yield [a.name for a in statement.get_attributes()]
+                rows: list[Any] = []
+                async for record in statement.cursor(prefetch=batch):
+                    rows.append(tuple(record))
+                    if len(rows) >= batch:
+                        yield rows
+                        rows = []
+                if rows:
+                    yield rows
+            except asyncpg.PostgresError as exc:  # raw driver errors, not wrapped by SQLAlchemy
+                raise QueryFailed(str(exc), exc.sqlstate) from exc
+            finally:
+                await conn.rollback()
+
+    def _engine(self, user: UserContext) -> Any:
+        return self._exec if user.scope is None else self._scoped
+
+    async def _seal(self, conn: Any, user: UserContext) -> None:
+        await conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(self._timeout_ms)}")
+        if user.scope is not None:
+            await conn.execute(
+                text("SELECT rbac.set_scope(:level, :value)"),
+                {"level": user.scope.level, "value": user.scope.value},
+            )
+        await conn.exec_driver_sql("SET LOCAL transaction_read_only = on")
 
     async def dispose(self) -> None:
         await self._scoped.dispose()

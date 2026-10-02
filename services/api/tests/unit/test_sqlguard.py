@@ -4,7 +4,7 @@ import pytest
 import sqlglot
 
 from app.rbac.context import Role, Scope, UserContext
-from app.sqlguard.guard import GuardViolation, Violation, guard
+from app.sqlguard.guard import GuardViolation, Violation, guard, page_query
 
 
 def make_user(role: Role) -> UserContext:
@@ -181,3 +181,28 @@ def test_round_already_numeric_or_without_decimals_is_untouched() -> None:
         "SELECT ROUND(SUM(pack_units)) FROM sales",
     ]:
         assert guard(sql, RAM, max_rows=10).autofixes == ()
+
+
+def test_page_query_adds_tiebreak_order_and_window() -> None:
+    user = make_user(Role.EXEC)
+    sql = page_query("SELECT a, b FROM sales ORDER BY b DESC", user, offset=200, limit=100, ncols=2)
+    assert sql.endswith("ORDER BY b DESC, 1, 2 LIMIT 100 OFFSET 200")
+    assert page_query("SELECT a FROM sales", user, offset=0, limit=50, ncols=1).endswith(
+        "ORDER BY 1 LIMIT 50 OFFSET 0"
+    )
+
+
+def test_page_query_respects_the_querys_own_limit() -> None:
+    user = make_user(Role.EXEC)
+    sql = page_query("SELECT a FROM sales LIMIT 1200", user, offset=1000, limit=500, ncols=1)
+    assert sql.endswith("LIMIT 200 OFFSET 1000")
+
+
+def test_page_query_revalidates_for_the_current_user() -> None:
+    with pytest.raises(GuardViolation):
+        page_query("SELECT wac FROM sales", make_user(Role.RAM), offset=0, limit=10, ncols=1)
+
+
+def test_guard_keeps_the_uncapped_query() -> None:
+    g = guard("SELECT a FROM sales", make_user(Role.EXEC), max_rows=10)
+    assert g.limit_applied and "LIMIT" not in g.full_sql and g.sql.endswith("LIMIT 10")

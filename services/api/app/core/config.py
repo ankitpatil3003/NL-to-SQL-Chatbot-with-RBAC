@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     db_scoped_reader_password: str = "scoped_reader_dev_pw"
     db_exec_reader_password: str = "exec_reader_dev_pw"
     query_timeout_ms: int = 15_000
-    query_row_limit: int = 1_000
+    query_row_limit: int = 1_000  # rows fetched inline per turn; the rest are paged or exported
+    export_row_limit: int = 1_000_000  # CSV export cap
 
     # --- LLM ---------------------------------------------------------------------------------
     # Comma-separated provider:model targets, tried in order (router.py). Per-task overrides:

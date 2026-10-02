@@ -28,11 +28,13 @@ export interface SessionSummary {
   updated_at: string;
 }
 
+export type Row = (string | number | null)[];
+
 export interface ResultTable {
   columns: string[];
-  rows: (string | number | null)[][];
+  rows: Row[]; // inline rows: all of them unless truncated
   truncated: boolean;
-  row_count: number;
+  row_count: number; // every row the query returns
 }
 
 export type TurnStatus = "answered" | "clarification" | "refused" | "error";
@@ -100,6 +102,12 @@ export const api = {
   rename: (id: string, title: string) =>
     request<void>(`/api/chat/sessions/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
   remove: (id: string) => request<void>(`/api/chat/sessions/${id}`, { method: "DELETE" }),
+  /** One page of a result beyond its inline rows (the stored query re-run as this user). */
+  rows: (messageId: string, offset: number, limit: number) =>
+    request<{ columns: string[]; rows: Row[]; offset: number }>(
+      `/api/chat/messages/${messageId}/rows?offset=${offset}&limit=${limit}`,
+    ),
+  exportUrl: (messageId: string) => `/api/chat/messages/${messageId}/export`,
 };
 
 // --- Streaming turn (server-sent events over a POST) --------------------------------------------

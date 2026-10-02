@@ -28,7 +28,12 @@ SQL = (
 
 
 def script_turn(
-    fake: ScriptedProvider, question: str, *, follow_up: bool = False, title: str = "Units By Drug"
+    fake: ScriptedProvider,
+    question: str,
+    *,
+    follow_up: bool = False,
+    title: str = "Units By Drug",
+    sql: str = SQL,
 ) -> None:
     """One turn = understanding (which also suggests the chat title), SQL, answer."""
     fake.add("router", Understanding(intent="data_question", standalone_question=question, is_follow_up=follow_up,
@@ -36,7 +41,7 @@ def script_turn(
     fake.add(
         "sql",
         SqlDraft(
-            answerable=True, sql=SQL, rules_applied=["DS-1"], assumptions=[], unanswerable_reason=""
+            answerable=True, sql=sql, rules_applied=["DS-1"], assumptions=[], unanswerable_reason=""
         ),
     )
     fake.add("answer", "ZENOVAX leads.")
@@ -285,3 +290,50 @@ async def test_idle_streams_get_heartbeats(settings: Settings) -> None:
     await repo.delete(user.user_id, sessions[0].session_id)
     await executor.dispose()
     await engine.dispose()
+
+
+ORGS = "SELECT org_id, org_name FROM organizations"
+
+
+@pytest.fixture
+def capped_api(settings: Settings) -> Iterator[tuple[TestClient, ScriptedProvider]]:
+    """Inline results capped at 5 rows, so any real listing overflows."""
+    app = create_app(settings)
+    with TestClient(app) as client:
+        state = app.state
+        llm, fake = scripted_router()
+        pipeline = Pipeline(llm, state.knowledge, state.executor, state.engine, max_rows=5)
+        state.chat = ChatService(ChatRepository(state.engine), pipeline)
+        yield client, fake
+
+
+def test_capped_result_reports_true_count_and_pages_through_everything(capped_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = capped_api
+    login(client, RAM)
+    script_turn(fake, "List my organizations", sql=ORGS)
+    result = dict(stream(client, "list my organizations"))["result"]
+    table, message_id = result["table"], result["message_id"]
+    assert len(table["rows"]) == 5 and table["truncated"] and table["row_count"] > 5
+    assert "LIMIT" not in result["query"] and f"{table['row_count']:,} rows" in result["notes"][-1]
+
+    seen: list[int] = []
+    while len(seen) < table["row_count"]:
+        page = client.get(f"/api/chat/messages/{message_id}/rows?offset={len(seen)}&limit=500")
+        assert page.status_code == 200 and page.json()["columns"] == ["org_id", "org_name"]
+        assert page.json()["rows"], "paging stopped before the reported total"
+        seen += [r[0] for r in page.json()["rows"]]
+    assert len(seen) == len(set(seen)) == table["row_count"]  # stable order: no repeats, no gaps
+    end = client.get(f"/api/chat/messages/{message_id}/rows?offset={len(seen)}").json()
+    assert end["rows"] == []
+
+    csv_resp = client.get(f"/api/chat/messages/{message_id}/export")
+    assert csv_resp.status_code == 200 and csv_resp.headers["content-type"].startswith("text/csv")
+    lines = csv_resp.text.strip().splitlines()
+    assert lines[0] == "org_id,org_name" and len(lines) == table["row_count"] + 1
+
+    # Only the chat's owner can page or export it (row scope itself: test_rbac_executor).
+    login(client, OTHER)
+    assert client.get(f"/api/chat/messages/{message_id}/rows").status_code == 404
+    assert client.get(f"/api/chat/messages/{message_id}/export").status_code == 404
+    client.cookies.clear()
+    assert client.get(f"/api/chat/messages/{message_id}/rows").status_code == 401

@@ -1,18 +1,25 @@
 """Chat endpoints: the session sidebar (list / open / rename / delete) and the streaming turn."""
 
+import csv
+import io
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth.deps import CurrentUser
 from app.chat.repository import ChatRepository
 from app.chat.service import BudgetExceeded, ChatService, SessionNotFound, TurnInProgress
+from app.core.config import Settings, get_settings
+from app.db.executor import QueryExecutor, QueryFailed
+from app.nl2sql.answer import jsonable
+from app.rbac.context import UserContext
+from app.sqlguard.guard import GuardViolation, page_query
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -111,6 +118,91 @@ async def delete_session(session_id: UUID, request: Request, user: CurrentUser) 
     if not await _repo(request).delete(user.user_id, str(session_id)):
         raise _not_found()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Full results: a turn returns at most query_row_limit rows inline; these re-run its stored
+# query for the rest. The SQL comes from our own message payload, is re-validated by the guard
+# for the user asking now, and runs on the same scoped executor, so access is exactly a new turn's.
+
+PAGE_MAX = 500
+
+
+class RowsPage(BaseModel):
+    columns: list[str]
+    rows: list[list[Any]]
+    offset: int
+
+
+async def _stored_page_sql(
+    request: Request, user: UserContext, message_id: UUID, *, offset: int, limit: int
+) -> str:
+    payload = await _repo(request).message_payload(user.user_id, str(message_id))
+    table = (payload or {}).get("table")
+    sql = (payload or {}).get("query") or (payload or {}).get("sql")  # older turns: capped SQL
+    if not sql or not table:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Result not found")
+    try:
+        return page_query(sql, user, offset=offset, limit=limit, ncols=len(table["columns"]))
+    except GuardViolation:  # e.g. the user's access changed since the question was asked
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This result isn't available at your current access level"
+        ) from None
+
+
+def _executor(request: Request) -> QueryExecutor:
+    executor: QueryExecutor = request.app.state.executor
+    return executor
+
+
+@router.get("/messages/{message_id}/rows")
+async def result_rows(
+    message_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=PAGE_MAX),
+) -> RowsPage:
+    sql = await _stored_page_sql(request, user, message_id, offset=offset, limit=limit)
+    try:
+        result = await _executor(request).run(user, sql)
+    except QueryFailed:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't load these rows") from None
+    rows = [[jsonable(v) for v in row] for row in result.rows]
+    return RowsPage(columns=result.columns, rows=rows, offset=offset)
+
+
+@router.get("/messages/{message_id}/export")
+async def export_csv(
+    message_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> StreamingResponse:
+    sql = await _stored_page_sql(
+        request, user, message_id, offset=0, limit=settings.export_row_limit
+    )
+    batches = _executor(request).stream(user, sql)
+    try:
+        header = await anext(batches)  # fail before the 200 if the query itself fails
+    except QueryFailed:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Couldn't export this result") from None
+
+    async def body() -> AsyncIterator[str]:
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(header)
+        async for rows in batches:
+            writer.writerows(rows)
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate()
+        yield buffer.getvalue()
+
+    return StreamingResponse(
+        body(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="result.csv"'},
+    )
 
 
 def _sse(event: dict[str, Any]) -> str:

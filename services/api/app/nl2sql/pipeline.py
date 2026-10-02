@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.db.executor import QueryExecutor
+from app.db.executor import QueryExecutor, QueryFailed
 from app.knowledge.base import KnowledgeBase
 from app.knowledge.fewshots import select_examples
 from app.llm.router import LLMRouter, LLMUnavailable
@@ -174,7 +174,12 @@ class Pipeline:
             return
 
         trace.sql_executed = outcome.guarded.sql
-        table = result_table(outcome.result)
+        total = None
+        capped = outcome.guarded.limit_applied and len(outcome.result.rows) >= self._max_rows
+        if capped or outcome.result.truncated:
+            with trace.stage("count"):
+                total = await self._count(user, outcome.guarded.full_sql)
+        table = result_table(outcome.result, total)
         trace.row_count = table.row_count
         assert draft is not None
         notes = build_notes(
@@ -197,12 +202,22 @@ class Pipeline:
                 answer=answer,
                 standalone_question=standalone,
                 sql=outcome.guarded.sql,
+                query=outcome.guarded.full_sql,
                 table=table,
                 assumptions=[plain_language(a) for a in draft.assumptions],
                 rules_applied=draft.rules_applied,
                 notes=notes,
             ),
         )
+
+    async def _count(self, user: UserContext, full_sql: str) -> int | None:
+        """True size of a capped result. Validated SQL, run as the same user; best effort."""
+        try:
+            counted = await self._executor.run(user, f"SELECT count(*) FROM ({full_sql}) AS q")
+            return int(counted.rows[0][0])
+        except QueryFailed:
+            log.warning("row count failed", exc_info=True)
+            return None
 
 
 async def ask(

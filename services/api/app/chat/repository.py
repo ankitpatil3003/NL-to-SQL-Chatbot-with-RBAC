@@ -90,6 +90,19 @@ class ChatRepository:
                 for r in rows
             ]
 
+    async def message_payload(self, user_id: str, message_id: str) -> dict[str, Any] | None:
+        """A message's payload, only if the message is in one of the user's own chats."""
+        async with self._engine.connect() as conn:
+            payload = await conn.scalar(
+                text(
+                    "SELECT m.payload FROM app.chat_messages m "
+                    "JOIN app.chat_sessions s USING (session_id) "
+                    "WHERE m.message_id = CAST(:m AS uuid) AND s.user_id = :u"
+                ),
+                {"m": message_id, "u": user_id},
+            )
+        return payload if isinstance(payload, dict) else None
+
     async def history(self, user_id: str, session_id: str) -> list[HistoryTurn]:
         """Last completed turns as (question, answer, sql) for follow-up understanding."""
         turns: list[HistoryTurn] = []

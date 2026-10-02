@@ -331,7 +331,14 @@ L3 checks, in `app/sqlguard/guard.py`:
 - an **allowlist** of functions: every dangerous Postgres function parses as `exp.Anonymous`, so the
   guard denies by default;
 - any `wac` identifier rejected for non-Execs;
-- a `LIMIT` enforced.
+- a `LIMIT` enforced (1,000 rows inline per turn).
+
+**Large results** are not cut off. When the cap fills, the pipeline runs `count(*)` over the
+uncapped query, so the answer reports the true size (e.g. 40,000 organisations). The table then
+pages through the whole result, and a CSV export streams it through a server-side cursor (up to 1M
+rows). Both endpoints re-run the stored query, not a cached copy. The guard re-validates the query
+for the user asking now, and the scoped executor runs it, so access matches a new question. Every
+output column is added as an ORDER BY tie-breaker, so pages never repeat or skip rows.
 
 The guard executes sqlglot's **regeneration of the validated tree**, so a disagreement between the
 sqlglot and Postgres parsers can't become a bypass.

@@ -60,8 +60,8 @@ TurnStatus = Literal["answered", "clarification", "refused", "error"]
 class ResultTable:
     columns: list[str]
     rows: list[list[Any]]
-    truncated: bool
-    row_count: int
+    truncated: bool  # rows holds fewer than row_count
+    row_count: int  # every row the query returns (counted when the inline rows were capped)
 
 
 @dataclass(slots=True)
@@ -70,6 +70,7 @@ class TurnResult:
     answer: str
     standalone_question: str | None = None
     sql: str | None = None
+    query: str | None = None  # the validated SQL before the row cap: paging and export re-run it
     table: ResultTable | None = None
     assumptions: list[str] = field(default_factory=list)
     rules_applied: list[str] = field(default_factory=list)

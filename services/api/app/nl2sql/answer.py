@@ -44,13 +44,15 @@ def jsonable(value: Any) -> Any:
     return value
 
 
-def result_table(result: QueryResult) -> ResultTable:
+def result_table(result: QueryResult, total: int | None = None) -> ResultTable:
+    """`total` is the true row count when the executor's cap cut the result short."""
     rows = [[jsonable(v) for v in row] for row in result.rows[:UI_ROWS]]
+    row_count = total if total is not None else len(result.rows)
     return ResultTable(
         columns=result.columns,
         rows=rows,
-        truncated=result.truncated or len(result.rows) > UI_ROWS,
-        row_count=len(result.rows),
+        truncated=result.truncated or len(rows) < row_count,
+        row_count=row_count,
     )
 
 
@@ -87,7 +89,10 @@ def build_notes(
                 "competitor volume rather than giving a true share."
             )
         if table.truncated:
-            notes.append(f"Only the first {len(table.rows)} rows are shown.")
+            notes.append(
+                f"The full result has {table.row_count:,} rows: page through the table or "
+                "download the CSV to see all of them."
+            )
     return notes
 
 

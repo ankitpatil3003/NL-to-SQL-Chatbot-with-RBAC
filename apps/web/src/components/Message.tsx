@@ -83,7 +83,7 @@ export default function Message({ message }: { message: UiMessage }) {
           ))}
         </div>
       )}
-      {p?.table && <ResultPanel table={p.table} sql={p.sql} />}
+      {p?.table && <ResultPanel table={p.table} sql={p.sql} messageId={message.key} />}
       {p && p.assumptions.length > 0 && (
         <details className="mt-2 text-sm text-fg-muted">
           <summary className="cursor-pointer select-none hover:text-fg-secondary">Assumptions</summary>

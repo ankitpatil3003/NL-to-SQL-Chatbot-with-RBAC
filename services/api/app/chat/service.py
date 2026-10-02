@@ -47,6 +47,7 @@ def result_payload(result: TurnResult) -> dict[str, Any]:
         "status": result.status,
         "standalone_question": result.standalone_question,
         "sql": result.sql,
+        "query": result.query,
         "table": dataclasses.asdict(result.table) if result.table else None,
         "assumptions": result.assumptions,
         "rules_applied": result.rules_applied,
