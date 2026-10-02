@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     llm_chain_answer: str | None = None
     llm_chain_title: str | None = None
     llm_chain_plan: str | None = None
+    # Self-consistency: the third SQL candidate's chain, ideally another model family (falls back
+    # to the SQL chain). SQL_CANDIDATES=1 turns self-consistency off.
+    llm_chain_sql_cross: str | None = None
+    sql_candidates: int = Field(3, ge=1, le=3)
     llm_timeout_s: float = 60.0
     openrouter_api_key: str | None = None
     anthropic_api_key: str | None = None
@@ -82,6 +86,7 @@ class Settings(BaseSettings):
             "answer": self.llm_chain_answer,
             "title": self.llm_chain_title,
             "plan": self.llm_chain_plan,
+            "sql_cross": self.llm_chain_sql_cross,
         }
         return {task: chain for task, chain in overrides.items() if chain}
 

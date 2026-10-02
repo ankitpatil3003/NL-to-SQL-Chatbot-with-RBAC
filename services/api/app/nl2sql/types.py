@@ -103,6 +103,7 @@ class TurnResult:
     title: str | None = None  # suggested chat title (from query understanding)
     plan: dict[str, Any] | None = None  # the AnalysisPlan the answer followed
     review: dict[str, Any] | None = None  # what the user is asked, when status == needs_input
+    confidence: str | None = None  # high | medium | low: candidate agreement and checks
 
 
 @dataclass(frozen=True, slots=True)

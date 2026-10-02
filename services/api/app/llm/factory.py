@@ -11,7 +11,7 @@ from app.llm.router import LLMRouter, Target
 
 log = logging.getLogger(__name__)
 
-TASKS = ("sql", "router", "rewrite", "answer", "title", "plan")
+TASKS = ("sql", "router", "rewrite", "answer", "title", "plan", "sql_cross")
 
 
 def build_providers(settings: Settings) -> dict[str, Provider]:
@@ -57,4 +57,6 @@ def build_router(settings: Settings) -> LLMRouter | None:
     if "default" not in chains:
         log.warning("no usable LLM provider configured; the assistant is disabled")
         return None
+    # The cross-model SQL candidate defaults to the SQL chain, not the default one.
+    chains.setdefault("sql_cross", chains.get("sql") or chains["default"])
     return LLMRouter(providers, chains)

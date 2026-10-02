@@ -4,7 +4,8 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import type { AssistantPayload, PlanReview, ReviewResponse } from "@/lib/api";
+import type { AssistantPayload, DisagreementReview, PlanReview, ReviewResponse } from "@/lib/api";
+import { formatValue, humanize } from "@/lib/chart";
 
 import { CheckIcon, CopyIcon } from "./icons";
 import ResultPanel from "./ResultPanel";
@@ -22,6 +23,7 @@ const STAGE_LABEL: Record<string, string> = {
   understanding: "Understanding your question",
   retrieving: "Looking up definitions and similar questions",
   planning: "Planning the analysis",
+  checking: "Checking the result",
   writing_sql: "Writing and checking the query",
   answering: "Writing the answer",
 };
@@ -137,6 +139,85 @@ function PlanCard({
   );
 }
 
+/** The SQL candidates disagreed: show each reading with a preview; the user picks one. */
+function DisagreementCard({
+  review,
+  onRespond,
+}: {
+  review: DisagreementReview;
+  onRespond?: (response: ReviewResponse, label: string) => void;
+}) {
+  return (
+    <div className="mt-3 space-y-3">
+      {review.options.map((o, i) => (
+        <div key={i} className="rounded-xl border border-border bg-bg-elevated p-4 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p>
+              <span className="font-medium">Reading {i + 1}:</span> {o.label}
+              <span className="text-fg-muted">
+                {" "}
+                · {o.row_count.toLocaleString()} row{o.row_count === 1 ? "" : "s"}
+              </span>
+            </p>
+            {onRespond && (
+              <button
+                onClick={() => onRespond({ choice: i }, `Use reading ${i + 1}`)}
+                className="shrink-0 rounded-lg bg-accent px-3 py-1 font-medium text-accent-fg hover:opacity-90"
+              >
+                Use this
+              </button>
+            )}
+          </div>
+          {o.preview.length > 0 && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs tabular-nums">
+                <thead>
+                  <tr>
+                    {o.columns.map((c) => (
+                      <th key={c} className="px-2 py-1 text-left font-medium text-fg-muted whitespace-nowrap">
+                        {humanize(c)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {o.preview.map((row, r) => (
+                    <tr key={r}>
+                      {row.map((v, j) => (
+                        <td key={j} className="px-2 py-1 whitespace-nowrap">
+                          {formatValue(v, o.columns[j])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const CONFIDENCE: Record<string, { label: string; title: string; className: string }> = {
+  high: {
+    label: "High confidence",
+    title: "Independent computations agreed and the business-rule checks passed.",
+    className: "text-fg-muted",
+  },
+  medium: {
+    label: "Medium confidence",
+    title: "Only one computation succeeded, or the query needed a correction after checks.",
+    className: "text-fg-muted",
+  },
+  low: {
+    label: "Low confidence",
+    title: "Computations disagreed or a rule check is still open; see the notes.",
+    className: "text-danger",
+  },
+};
+
 export default function Message({
   message,
   onRespond,
@@ -172,7 +253,17 @@ export default function Message({
           ))}
         </div>
       )}
-      {p?.status === "needs_input" && p.review && <PlanCard review={p.review} onRespond={onRespond} />}
+      {p?.status === "needs_input" && p.review?.kind === "plan_review" && (
+        <PlanCard review={p.review} onRespond={onRespond} />
+      )}
+      {p?.status === "needs_input" && p.review?.kind === "disagreement" && (
+        <DisagreementCard review={p.review} onRespond={onRespond} />
+      )}
+      {p?.confidence && CONFIDENCE[p.confidence] && (
+        <p className={`mt-2 text-xs ${CONFIDENCE[p.confidence].className}`} title={CONFIDENCE[p.confidence].title}>
+          {CONFIDENCE[p.confidence].label}
+        </p>
+      )}
       {p?.table && <ResultPanel table={p.table} sql={p.sql} messageId={message.key} />}
       {p && (p.assumptions.length > 0 || p.plan) && (
         <details className="mt-2 text-sm text-fg-muted">

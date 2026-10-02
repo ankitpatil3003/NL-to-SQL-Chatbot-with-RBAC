@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from evals.compare import compare, value_matches
+from app.nl2sql.compare import compare, value_matches
 
 
 def test_numbers_match_within_rounding_tolerance() -> None:

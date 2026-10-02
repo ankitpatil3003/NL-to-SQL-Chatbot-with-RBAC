@@ -74,6 +74,7 @@ async def test_full_data_turn_streams_events_and_persists_a_trace(env) -> None: 
         "retrieving",
         "planning",
         "writing_sql",
+        "checking",
         "answering",
     ]
     assert [e.type for e in events][-2:] == ["answer_delta", "result"]

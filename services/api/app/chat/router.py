@@ -57,6 +57,7 @@ class ResumeIn(BaseModel):
 
     answers: dict[str, str] = Field(default_factory=dict, max_length=10)
     feedback: str = Field("", max_length=MAX_MESSAGE_CHARS)
+    choice: int | None = Field(None, ge=0, le=10)  # which reading, when candidates disagreed
 
     @field_validator("answers")
     @classmethod

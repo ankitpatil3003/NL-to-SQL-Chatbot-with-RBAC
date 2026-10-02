@@ -2,13 +2,19 @@
 
   understand ─┬─ not a data question ─▶ reply
               └─▶ retrieve ─▶ plan ─▶ review ─┬─ feedback ─▶ plan (revise)
-                                              └─▶ sql ─┬─ unanswerable ─▶ explain
-                                                       ├─ attempts spent ─▶ fail
-                                                       └─ result ────────▶ answer
+                                              └─▶ sql (N candidates) ─▶ reconcile ─┐
+        ┌─────────────────────────────────────────────────────────────────────────┘
+        ├─ unanswerable ─▶ explain
+        ├─ none ran ─────▶ fail
+        └─▶ verify ─▶ answer
 
-Human in the loop: `review` pauses the turn (LangGraph interrupt) when the plan has a genuine
-ambiguity, or when the user asked to review every plan. The chat shows the plan and resumes the
-graph with the user's choice or correction. Clear questions run straight through.
+Accuracy first. `sql` generates several candidates (different sampling and model family) and
+runs them; `reconcile` keeps the result most of them agree on; `verify` checks the chosen query
+against the business rules that change numbers silently, with one repair round.
+
+Human in the loop: the turn pauses (LangGraph interrupt) when the plan has a genuine ambiguity,
+when the user asked to review every plan, or when the candidates disagree (each distinct result is
+a different reading of the question, so the user picks). Clear questions run straight through.
 
 The state is checkpointed per chat, so a turn can pause for the user and resume later. What must
 never be checkpointed travels in the per-run context instead: who the user is (re-resolved from
@@ -16,6 +22,7 @@ the database on every request, resume included), the model router, the executor 
 Nodes report progress through the stream writer as the same Events the chat API already streams.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
@@ -32,8 +39,9 @@ from app.knowledge.fewshots import SelectedExample, select_examples
 from app.knowledge.store import Hit
 from app.llm.router import LLMRouter
 from app.nl2sql.answer import build_notes, plain_language, result_table, synthesize
+from app.nl2sql.consensus import CANDIDATE_SPECS, Candidate, reconcile
 from app.nl2sql.entities import Resolution, resolve_mentions
-from app.nl2sql.generate import build_context, generate_and_run, redact_wac_sql
+from app.nl2sql.generate import SqlOutcome, build_context, generate_and_run, redact_wac_sql
 from app.nl2sql.plan import make_plan, read_response, render_plan
 from app.nl2sql.types import (
     AnalysisPlan,
@@ -45,6 +53,7 @@ from app.nl2sql.types import (
     Understanding,
 )
 from app.nl2sql.understand import understand
+from app.nl2sql.verify import Issue, check
 from app.observability.trace import TurnTrace
 from app.rbac.context import UserContext
 from app.sqlguard.guard import GuardedQuery
@@ -80,6 +89,8 @@ CHECKPOINT_TYPES = [
     ("app.knowledge.fewshots", "Example"),
     ("app.nl2sql.entities", "Resolution"),
     ("app.sqlguard.guard", "GuardedQuery"),
+    ("app.nl2sql.consensus", "Candidate"),
+    ("app.nl2sql.verify", "Issue"),
 ]
 
 
@@ -95,6 +106,7 @@ class TurnDeps:
     max_rows: int
     hitl: bool = False  # may pause for the user (needs a checkpointer; never in evals or the CLI)
     always_review: bool = False  # the user asked to see every plan before it runs
+    candidates: int = 1  # SQL candidates per turn (self-consistency when > 1)
 
 
 class TurnState(TypedDict, total=False):
@@ -110,7 +122,12 @@ class TurnState(TypedDict, total=False):
     reviewed: bool  # a human approved the plan that runs
     corrected: bool  # the last review typed a correction (so the revision is shown again)
     replan: bool
-    draft: SqlDraft | None
+    candidates: list[Candidate]
+    agreement: str  # unanimous | majority | split | single | none (consensus.Agreement)
+    chosen_by: str  # consensus | user
+    issues: list[Issue]  # verifier findings still open on the chosen query
+    repaired: bool
+    draft: SqlDraft | None  # the chosen candidate's
     guarded: GuardedQuery | None
     table: ResultTable | None
     result: TurnResult | None
@@ -131,6 +148,11 @@ def new_turn(question: str, history: list[HistoryTurn]) -> TurnState:
         reviewed=False,
         corrected=False,
         replan=False,
+        candidates=[],
+        agreement="none",
+        chosen_by="consensus",
+        issues=[],
+        repaired=False,
         draft=None,
         guarded=None,
         table=None,
@@ -234,35 +256,105 @@ async def review_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
 
 
 async def sql_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
-    deps, plan = runtime.context, state["plan"]
+    deps = runtime.context
     _emit("stage", "writing_sql")
-    context = _context(state, deps)
-    if plan is not None:
-        context += "\n\n" + render_plan(plan, reviewed=state["reviewed"])
+    context = _sql_context(state, deps)
+    specs = CANDIDATE_SPECS[: deps.candidates]
     with deps.trace.stage("sql"):
+        outcomes = await asyncio.gather(
+            *(
+                generate_and_run(
+                    deps.llm,
+                    deps.kb,
+                    deps.executor,
+                    deps.user,
+                    context,
+                    max_rows=deps.max_rows,
+                    task=task,
+                    temperature=temperature,
+                )
+                for task, temperature in specs
+            ),
+            return_exceptions=True,
+        )
+    candidates: list[Candidate] = []
+    for (task, temperature), outcome in zip(specs, outcomes, strict=True):
+        if isinstance(outcome, BaseException):  # e.g. that model's whole chain is down
+            deps.trace.detail.setdefault("candidate_errors", []).append(f"{task}: {outcome!r}")
+            continue
+        candidates.append(await _candidate(deps, task, temperature, outcome))
+    if not candidates:  # every candidate failed outright: surface the first error
+        first = next(o for o in outcomes if isinstance(o, BaseException))
+        raise first
+    return {"candidates": candidates}
+
+
+async def reconcile_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
+    deps, candidates = runtime.context, state["candidates"]
+    consensus = reconcile(candidates)
+    chosen, chosen_by = consensus.chosen, "consensus"
+    if consensus.agreement == "split" and deps.hitl:
+        # Each distinct result is a different reading of the question: the user decides.
+        # (Pure until interrupt(): on resume this node re-runs from the top.)
+        response = interrupt(
+            {
+                "kind": "disagreement",
+                "options": [_option(candidates[g[0]]) for g in consensus.groups],
+            }
+        )
+        pick = response.get("choice") if isinstance(response, dict) else None
+        if isinstance(pick, int) and 0 <= pick < len(consensus.groups):
+            chosen, chosen_by = consensus.groups[pick][0], "user"
+    deps.trace.detail["consensus"] = {
+        "agreement": consensus.agreement,
+        "groups": consensus.groups,
+        "chosen": chosen,
+        "chosen_by": chosen_by,
+    }
+    update: dict[str, Any] = {"agreement": consensus.agreement, "chosen_by": chosen_by}
+    if chosen is None:  # nothing ran: explain if most concluded "unanswerable", else fail
+        group = consensus.groups[0] if consensus.groups else [0]
+        draft = candidates[group[0]].draft if group[0] < len(candidates) else None
+        return update | {"draft": draft, "guarded": None, "table": None}
+    c = candidates[chosen]
+    _record_sql(deps, c)
+    return update | {"draft": c.draft, "guarded": c.guarded, "table": c.table}
+
+
+async def verify_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
+    deps, guarded, table = runtime.context, state["guarded"], state["table"]
+    assert guarded is not None and table is not None
+    _emit("stage", "checking")
+    issues = check(guarded.full_sql, table)
+    deps.trace.detail["verify"] = [i.code for i in issues]
+    if not issues:
+        return {"issues": []}
+    # One repair round on the primary model, with the findings as review feedback.
+    feedback = "\n".join(f"- {i.for_model}" for i in issues)
+    context = (
+        _sql_context(state, deps)
+        + f"\n\n## A reviewer checked your query\n```sql\n{guarded.full_sql}\n```\n"
+        + f"Problems found:\n{feedback}\nReturn the corrected query (or the same one if the "
+        + "question really asks for it)."
+    )
+    with deps.trace.stage("repair"):
         outcome = await generate_and_run(
             deps.llm, deps.kb, deps.executor, deps.user, context, max_rows=deps.max_rows
         )
-    for call in outcome.llm_calls:
-        deps.trace.add_llm("sql", call)
-    deps.trace.detail["sql_attempts"] = [
-        {"sql": a.sql, "failed_at": a.failed_at, "error": a.error, "autofixes": a.autofixes}
-        for a in outcome.attempts
-    ]
-    if outcome.attempts:
-        deps.trace.sql_generated = outcome.attempts[-1].sql
-    if not outcome.succeeded or outcome.result is None or outcome.guarded is None:
-        return {"draft": outcome.draft, "guarded": None, "table": None}
-
-    guarded, result = outcome.guarded, outcome.result
-    deps.trace.sql_executed = guarded.sql
-    total = None
-    if (guarded.limit_applied and len(result.rows) >= deps.max_rows) or result.truncated:
-        with deps.trace.stage("count"):
-            total = await _count(deps, guarded.full_sql)
-    table = result_table(result, total)
-    deps.trace.row_count = table.row_count
-    return {"draft": outcome.draft, "guarded": guarded, "table": table}
+    repaired = await _candidate(deps, "sql", 0.0, outcome, label="repair")
+    if not repaired.succeeded:
+        return {"issues": issues, "repaired": True}
+    assert repaired.guarded is not None and repaired.table is not None
+    remaining = check(repaired.guarded.full_sql, repaired.table)
+    deps.trace.detail["verify_after_repair"] = [i.code for i in remaining]
+    _record_sql(deps, repaired)
+    return {
+        "issues": remaining,
+        "repaired": True,
+        "draft": repaired.draft,
+        "guarded": repaired.guarded,
+        "table": repaired.table,
+    }
 
 
 async def explain_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
@@ -303,6 +395,14 @@ async def answer_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
         asked_for_dollars=state["understanding"].asks_for_dollars,
         resolutions=state["resolutions"],
     )
+    confidence = _confidence(state)
+    if state["agreement"] == "split" and state["chosen_by"] != "user":
+        notes.append(
+            "Independent ways of computing this gave different results; this answer uses the "
+            "primary interpretation. Treat it with care."
+        )
+    notes += [i.for_user for i in state["issues"] if i.for_user]
+    deps.trace.detail["confidence"] = confidence
     _emit("stage", "answering")
     with deps.trace.stage("answer"):
         answered = await synthesize(
@@ -322,6 +422,7 @@ async def answer_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
             rules_applied=draft.rules_applied,
             notes=notes,
             plan=state["plan"].model_dump() if state["plan"] else None,
+            confidence=confidence,
         )
     )
 
@@ -337,11 +438,11 @@ def after_review(state: TurnState) -> str:
     return "plan" if state["replan"] else "sql"
 
 
-def after_sql(state: TurnState) -> str:
+def after_reconcile(state: TurnState) -> str:
     draft = state.get("draft")
-    if draft is not None and not draft.answerable:
-        return "explain"
-    return "answer" if state.get("table") is not None else "fail"
+    if state.get("table") is not None:
+        return "verify"
+    return "explain" if draft is not None and not draft.answerable else "fail"
 
 
 def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph[Any, Any, Any, Any]:
@@ -352,6 +453,8 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph[Any, An
     g.add_node("plan", plan_node)
     g.add_node("review", review_node)
     g.add_node("sql", sql_node)
+    g.add_node("reconcile", reconcile_node)
+    g.add_node("verify", verify_node)
     g.add_node("explain", explain_node)
     g.add_node("fail", fail_node)
     g.add_node("answer", answer_node)
@@ -360,7 +463,9 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph[Any, An
     g.add_edge("retrieve", "plan")
     g.add_edge("plan", "review")
     g.add_conditional_edges("review", after_review, ["plan", "sql"])
-    g.add_conditional_edges("sql", after_sql, ["explain", "answer", "fail"])
+    g.add_edge("sql", "reconcile")
+    g.add_conditional_edges("reconcile", after_reconcile, ["verify", "explain", "fail"])
+    g.add_edge("verify", "answer")
     for end in ("reply", "explain", "fail", "answer"):
         g.add_edge(end, END)
     return g.compile(checkpointer=checkpointer)
@@ -379,6 +484,68 @@ def _context(state: TurnState, deps: TurnDeps) -> str:
         previous=history[-1] if intent.is_follow_up and history else None,
         volume_instead_of_dollars=intent.asks_for_dollars and not deps.user.can_view_wac,
     )
+
+
+def _sql_context(state: TurnState, deps: TurnDeps) -> str:
+    context, plan = _context(state, deps), state["plan"]
+    if plan is not None:
+        context += "\n\n" + render_plan(plan, reviewed=state["reviewed"])
+    return context
+
+
+async def _candidate(
+    deps: TurnDeps, task: str, temperature: float, outcome: SqlOutcome, *, label: str = ""
+) -> Candidate:
+    """A finished generation as a candidate: its result table (true count when capped) and its
+    trace entries."""
+    name = label or f"{task}@{temperature:g}"
+    for call in outcome.llm_calls:
+        deps.trace.add_llm("sql", call)
+    attempts = [
+        {"sql": a.sql, "failed_at": a.failed_at, "error": a.error, "autofixes": a.autofixes}
+        for a in outcome.attempts
+    ]
+    deps.trace.detail.setdefault("sql_candidates", []).append(
+        {"candidate": name, "attempts": attempts}
+    )
+    deps.trace.detail.setdefault("sql_attempts", attempts)  # the primary's (evals count repairs)
+    c = Candidate(task, temperature, draft=outcome.draft, attempts=len(outcome.attempts))
+    if outcome.result is None or outcome.guarded is None:
+        return c
+    guarded, result = outcome.guarded, outcome.result
+    total = None
+    if (guarded.limit_applied and len(result.rows) >= deps.max_rows) or result.truncated:
+        total = await _count(deps, guarded.full_sql)
+    c.guarded, c.table = guarded, result_table(result, total)
+    return c
+
+
+def _record_sql(deps: TurnDeps, c: Candidate) -> None:
+    assert c.guarded is not None and c.table is not None
+    deps.trace.sql_generated = c.draft.sql if c.draft else None
+    deps.trace.sql_executed = c.guarded.sql
+    deps.trace.row_count = c.table.row_count
+
+
+def _option(c: Candidate) -> dict[str, Any]:
+    """One reading of the question, as the user sees it when candidates disagree."""
+    assert c.table is not None
+    assumptions = c.draft.assumptions if c.draft else []
+    return {
+        "label": "; ".join(plain_language(a) for a in assumptions) or "Computed as planned",
+        "columns": c.table.columns,
+        "preview": c.table.rows[:3],
+        "row_count": c.table.row_count,
+    }
+
+
+def _confidence(state: TurnState) -> str:
+    caveats = [i for i in state["issues"] if i.for_user]  # an empty result can simply be true
+    if caveats or (state["agreement"] == "split" and state["chosen_by"] != "user"):
+        return "low"
+    if state["agreement"] in ("unanimous", "majority") or state["chosen_by"] == "user":
+        return "medium" if state["repaired"] else "high"
+    return "medium"  # a single candidate produced a result
 
 
 def _standalone(state: TurnState) -> str:

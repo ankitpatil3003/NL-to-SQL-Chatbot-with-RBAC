@@ -57,10 +57,17 @@ export interface PlanReview {
   plan: AnalysisPlan;
 }
 
+/** Independent SQL candidates disagreed: each option is one reading of the question. */
+export interface DisagreementReview {
+  kind: "disagreement";
+  options: { label: string; columns: string[]; preview: Row[]; row_count: number }[];
+}
+
 /** The user's response to a plan review. Empty = run the plan as proposed. */
 export interface ReviewResponse {
   answers?: Record<string, string>;
   feedback?: string;
+  choice?: number; // the reading picked, for a disagreement
 }
 
 export interface AssistantPayload {
@@ -73,7 +80,8 @@ export interface AssistantPayload {
   notes: string[];
   trace_id: string | null;
   plan?: AnalysisPlan | null; // what the answer computed
-  review?: PlanReview | null; // when status is needs_input
+  review?: PlanReview | DisagreementReview | null; // when status is needs_input
+  confidence?: "high" | "medium" | "low" | null; // candidate agreement + rule checks
 }
 
 export interface ChatMessage {

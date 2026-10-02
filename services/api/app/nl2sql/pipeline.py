@@ -44,12 +44,14 @@ class Pipeline:
         *,
         max_rows: int,
         checkpointer: Checkpointer = None,
+        candidates: int = 1,
     ) -> None:
         self._llm = llm
         self._kb = kb
         self._executor = executor
         self._engine = engine
         self._max_rows = max_rows
+        self._candidates = candidates
         self._graph = build_graph(checkpointer)
         # checkpoint once, when the turn ends or pauses (not after every node)
         self._durability: Literal["exit"] | None = "exit" if checkpointer else None
@@ -100,7 +102,7 @@ class Pipeline:
     ) -> AsyncIterator[Event]:
         deps = TurnDeps(
             user, trace, self._llm, self._kb, self._executor, self._max_rows,
-            hitl=self.can_pause, always_review=review,
+            hitl=self.can_pause, always_review=review, candidates=self._candidates,
         )  # fmt: skip
         # One checkpoint thread per chat: a paused turn resumes in the chat it was asked in.
         config = _thread(trace.session_id or f"adhoc-{uuid.uuid4()}")
@@ -147,7 +149,12 @@ def _thread(thread_id: str) -> RunnableConfig:
 def _paused(review: dict[str, Any], state: dict[str, Any]) -> TurnResult:
     plan = review.get("plan") or {}
     summary = plan.get("summary", "")
-    if review.get("reason") == "ambiguous":
+    if review.get("kind") == "disagreement":
+        answer = (
+            "I computed this a few independent ways and they disagree, which usually means the "
+            "question can be read more than one way. Which of these did you mean?"
+        )
+    elif review.get("reason") == "ambiguous":
         answer = f"Before I run this, I need one choice from you. My plan: {summary}"
     else:
         answer = f"Here's my plan: {summary} Run it as is, or tell me what to change."

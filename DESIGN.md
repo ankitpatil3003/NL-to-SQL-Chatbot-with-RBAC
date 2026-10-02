@@ -119,6 +119,31 @@ user: implement exactly this"), and the answer shows it under "Approach and assu
 and the CLI run without a checkpointer, so they never pause (open questions take their
 defaults).
 
+**Self-consistency, then verification.** The `sql` node generates 3 candidates concurrently:
+- the primary model greedy (temperature 0);
+- the same model sampled (0.7);
+- a second model family (`LLM_CHAIN_SQL_CROSS`). In production that is Sonnet ×2 + gpt-oss.
+
+Each candidate runs through the guard and the scoped executor, and `reconcile` groups the results
+with the eval harness's own comparison (`nl2sql/compare.py`: order- and rounding-tolerant, extra
+columns allowed).
+- A strict majority wins.
+- On a split, the turn pauses and shows each distinct result as a reading of the question, with a
+  preview. Disagreement usually means real ambiguity, and the user picks.
+
+`verify` then lints the chosen query for the mistakes that change numbers without an error:
+- a sales aggregate with no `data_source` filter (mixes paid demand, free drug and market rows);
+- a market share computed with both sources in one aggregate;
+- an empty result.
+
+It gives the primary model one repair round. An issue that survives becomes a caveat in the
+answer. Each answer carries a confidence:
+- **high:** candidates agreed and the checks passed;
+- **medium:** a single candidate, or a repaired query;
+- **low:** an unresolved split or an open caveat.
+
+`SQL_CANDIDATES=1` turns self-consistency off.
+
 Each stage is a module with typed inputs and outputs. Providers, retriever and executor are injected,
 so every stage runs in tests against fakes or the real database. The same `Pipeline` serves the SSE
 endpoint, the CLI (`python -m app.cli --user <email> "q1" "q2"`) and the eval harness, so what gets

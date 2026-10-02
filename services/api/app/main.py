@@ -73,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.engine,
                 max_rows=settings.query_row_limit,
                 checkpointer=checkpointer,
+                candidates=settings.sql_candidates,
             )
             app.state.chat = ChatService(
                 ChatRepository(app.state.engine),

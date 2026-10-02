@@ -34,10 +34,10 @@ from app.db.executor import QueryExecutor
 from app.knowledge.base import init_knowledge
 from app.llm.factory import build_router
 from app.nl2sql.answer import jsonable
+from app.nl2sql.compare import compare
 from app.nl2sql.pipeline import Pipeline, ask
 from app.nl2sql.types import HistoryTurn
 from app.rbac.context import UserContext, build_user_context
-from evals.compare import compare
 
 HERE = Path(__file__).parent
 REPORTS = HERE / "reports"
@@ -173,7 +173,10 @@ async def run_arm(
     llm = build_router(settings)
     kb = await init_knowledge(engine, settings.knowledge_docs_dir, settings.embed_cache_dir)
     assert llm is not None and kb is not None, "assistant not configured"
-    pipeline = Pipeline(llm, kb, executor, engine, max_rows=settings.query_row_limit)
+    pipeline = Pipeline(
+        llm, kb, executor, engine,
+        max_rows=settings.query_row_limit, candidates=settings.sql_candidates,
+    )  # fmt: skip
 
     contexts = {}
     for alias, email in users.items():

@@ -60,9 +60,26 @@ variable "bedrock_region" {
   default = "us-east-1"
 }
 
+# v2, accuracy first (user decision 2026-10-02): Sonnet writes the plan and two of the three SQL
+# candidates; gpt-oss writes the third as an independent model family. Each falls back if down.
 variable "llm_chain_sql" {
   type    = string
-  default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-sonnet-5"
+  default = "anthropic:claude-sonnet-5,bedrock-converse:openai.gpt-oss-120b-1:0"
+}
+
+variable "llm_chain_plan" {
+  type    = string
+  default = "anthropic:claude-sonnet-5,bedrock-converse:openai.gpt-oss-120b-1:0"
+}
+
+variable "llm_chain_sql_cross" {
+  type    = string
+  default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free"
+}
+
+variable "sql_candidates" {
+  type    = number
+  default = 3 # self-consistency; 1 turns it off
 }
 
 variable "chat_daily_budget_usd" {

@@ -120,6 +120,8 @@ async def generate_and_run(
     context: str,
     *,
     max_rows: int,
+    task: str = "sql",
+    temperature: float | None = 0.0,
 ) -> SqlOutcome:
     outcome = SqlOutcome()
     system = sql_system_blocks(kb, user)
@@ -128,7 +130,12 @@ async def generate_and_run(
     for _ in range(MAX_REPAIRS + 1):
         routed = await llm.complete(
             LLMRequest(
-                task="sql", system=system, messages=messages, max_tokens=4000, output=SqlDraft
+                task=task,
+                system=system,
+                messages=messages,
+                max_tokens=4000,
+                output=SqlDraft,
+                temperature=temperature,
             )
         )
         outcome.llm_calls.append(routed)

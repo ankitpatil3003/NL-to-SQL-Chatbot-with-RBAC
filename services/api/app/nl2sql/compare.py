@@ -1,4 +1,5 @@
-"""Execution-accuracy comparison: does the assistant's result contain the reference result?
+"""Result-set comparison: does one result contain another? Used by the eval harness (execution
+accuracy against a reference) and by self-consistency (do two SQL candidates agree?).
 
 Relaxed for a conversational assistant (unlike strict Spider/BIRD EX): column names and order are
 ignored and extra columns are allowed (the assistant may add a percentage next to a count), but
@@ -69,3 +70,9 @@ def compare(
             return False, f"no row matches reference {ref}"
         remaining.pop(idx)
     return True, "ok"
+
+
+def same_result(a: list[list[Any]], b: list[list[Any]]) -> bool:
+    """Two candidates agree: same rows, order-insensitive, and one may carry extra columns
+    (e.g. a share next to the count it was computed from)."""
+    return compare(a, b)[0] or compare(b, a)[0]

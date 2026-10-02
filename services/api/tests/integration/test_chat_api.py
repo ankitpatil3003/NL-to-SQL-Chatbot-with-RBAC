@@ -92,7 +92,7 @@ def test_new_chat_streams_persists_and_is_listed(api) -> None:  # type: ignore[n
     events = stream(client, "units by drug?")
     names = [n for n, _ in events]
     assert names[0] == "session" and names[-2:] == ["title", "done"]
-    assert names.count("stage") == 5 and "answer_delta" in names
+    assert names.count("stage") == 6 and "answer_delta" in names
     session_id = events[0][1]["session_id"]
     result = dict(events)["result"]
     assert result["status"] == "answered" and result["table"]["rows"] and "LIMIT" in result["sql"]
@@ -475,3 +475,96 @@ def test_a_new_question_replaces_a_paused_plan(hitl_api) -> None:  # type: ignor
     history = client.portal.call(repo.history, user_id, session_id)  # type: ignore[union-attr]
     assert [t.question for t in history] == ["units by drug?"]
     client.delete(f"/api/chat/sessions/{session_id}")
+
+
+# --- Self-consistency and verification --------------------------------------------------------
+
+TOP2 = SQL + " LIMIT 2"  # a different result: the same drugs, only the top two
+
+
+def draft_of(sql: str, assumption: str = "") -> SqlDraft:
+    return SqlDraft(answerable=True, sql=sql, rules_applied=["DS-1"],
+                    assumptions=[assumption] if assumption else [], unanswerable_reason="")  # fmt: skip
+
+
+@pytest.fixture
+def consensus_api(settings: Settings) -> Iterator[tuple[TestClient, ScriptedProvider]]:
+    """Three SQL candidates per turn, with the lifespan's checkpointer (so splits can pause)."""
+    app = create_app(settings)
+    with TestClient(app) as client:
+        state = app.state
+        llm, fake = scripted_router()
+        pipeline = Pipeline(
+            llm, state.knowledge, state.executor, state.engine, max_rows=1000,
+            checkpointer=state.chat._pipeline._graph.checkpointer, candidates=3,
+        )  # fmt: skip
+        state.chat = ChatService(ChatRepository(state.engine), pipeline)
+        yield client, fake
+
+
+def script_candidates(fake: ScriptedProvider, question: str, sqls: list[SqlDraft]) -> None:
+    script_turn(fake, question)
+    fake.queues["sql"] = [sqls[0], sqls[1]]  # primary greedy, primary sampled
+    fake.queues["sql_cross"] = [sqls[2]]
+
+
+def test_agreeing_candidates_give_a_high_confidence_answer(consensus_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = consensus_api
+    login(client, RAM)
+    script_candidates(fake, "Units by drug?", [draft_of(SQL)] * 3)
+    events = stream(client, "units by drug?")
+    result = dict(events)["result"]
+    assert result["status"] == "answered" and result["confidence"] == "high"
+    assert len([r for r in fake.requests if r.task in ("sql", "sql_cross")]) == 3
+    temps = sorted(r.temperature or 0 for r in fake.requests if r.task == "sql")
+    assert temps == [0.0, 0.7]  # the same model, greedy and sampled
+    client.delete(f"/api/chat/sessions/{events[0][1]['session_id']}")
+
+
+def test_disagreeing_candidates_pause_and_the_users_reading_wins(consensus_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = consensus_api
+    login(client, RAM)
+    script_candidates(fake, "Units by drug?", [
+        draft_of(SQL, "All drugs"), draft_of(TOP2, "Only the top two drugs"),
+        draft_of(SQL + " LIMIT 1", "Only the leader"),
+    ])  # fmt: skip
+    events = stream(client, "units by drug?")
+    session_id, paused = events[0][1]["session_id"], dict(events)["result"]
+    assert paused["status"] == "needs_input" and paused["review"]["kind"] == "disagreement"
+    labels = [o["label"] for o in paused["review"]["options"]]
+    assert labels == ["All drugs", "Only the top two drugs", "Only the leader"]
+
+    done = dict(resume(client, session_id, {"choice": 1}))["result"]
+    assert done["status"] == "answered" and done["table"]["row_count"] == 2
+    assert done["confidence"] == "high" and "LIMIT 2" in done["sql"]
+    messages = client.get(f"/api/chat/sessions/{session_id}").json()["messages"]
+    assert messages[2]["content"] == "Use reading 2"
+    client.delete(f"/api/chat/sessions/{session_id}")
+
+
+def test_verifier_repairs_a_query_that_mixes_data_sources(consensus_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = consensus_api
+    login(client, RAM)
+    mixed = "SELECT drug_name, SUM(pack_units) AS total_units FROM sales GROUP BY 1 ORDER BY 2 DESC"
+    script_candidates(fake, "Units by drug?", [draft_of(mixed)] * 3)
+    fake.queues["sql"].append(draft_of(SQL))  # the repair round
+    events = stream(client, "units by drug?")
+    result = dict(events)["result"]
+    assert "data_source = 'distributor'" in result["sql"] and result["confidence"] == "medium"
+    repair = fake.last("sql").messages[0].content
+    assert "A reviewer checked your query" in repair and "without filtering data_source" in repair
+    assert not any("combine paid demand" in n for n in result["notes"])  # fixed, so no caveat
+    client.delete(f"/api/chat/sessions/{events[0][1]['session_id']}")
+
+
+def test_an_unrepaired_issue_becomes_a_caveat_and_low_confidence(consensus_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = consensus_api
+    login(client, RAM)
+    mixed = "SELECT drug_name, SUM(pack_units) AS total_units FROM sales GROUP BY 1 ORDER BY 2 DESC"
+    script_candidates(fake, "Units by drug?", [draft_of(mixed)] * 3)
+    fake.queues["sql"].append(draft_of(mixed))  # the model keeps it
+    events = stream(client, "units by drug?")
+    result = dict(events)["result"]
+    assert result["confidence"] == "low"
+    assert any("combine paid demand, free drug" in n for n in result["notes"])
+    client.delete(f"/api/chat/sessions/{events[0][1]['session_id']}")

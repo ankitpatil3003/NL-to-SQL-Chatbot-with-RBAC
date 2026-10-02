@@ -52,7 +52,10 @@ async def main(email: str, questions: list[str], show_sql: bool, show_trace: boo
     if llm is None or kb is None or record is None:
         raise SystemExit("assistant not configured (LLM key / knowledge) or unknown user")
     user = build_user_context(record)
-    pipeline = Pipeline(llm, kb, executor, engine, max_rows=settings.query_row_limit)
+    pipeline = Pipeline(
+        llm, kb, executor, engine,
+        max_rows=settings.query_row_limit, candidates=settings.sql_candidates,
+    )  # fmt: skip
     print(f"# {user.full_name} ({user.role.value}, {user.scope_label})")
 
     history: list[HistoryTurn] = []

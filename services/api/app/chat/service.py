@@ -59,11 +59,14 @@ def result_payload(result: TurnResult) -> dict[str, Any]:
         "trace_id": result.trace_id,
         "plan": result.plan,
         "review": result.review,
+        "confidence": result.confidence,
     }
 
 
 def describe_resume(response: dict[str, Any]) -> str:
     """The user's side of a plan review, as the chat shows it."""
+    if isinstance(response.get("choice"), int):
+        return f"Use reading {response['choice'] + 1}"
     parts = [f"{q}: {a}" for q, a in (response.get("answers") or {}).items()]
     if response.get("feedback"):
         parts.append(str(response["feedback"]))
