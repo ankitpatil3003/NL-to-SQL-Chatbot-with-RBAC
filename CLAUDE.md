@@ -37,6 +37,7 @@ dataset, with role-based row/column security enforced on every query.
 | Chat UX | **Like the Claude.ai web app:** a sidebar of persistent past sessions (reopen any old chat and continue it), a "New chat" button, streaming responses, and auto-generated titles. Chats persist per user across logins. |
 | UI design | **Claude.ai-like, light + dark** (follows the OS, manual toggle). **Charts chosen deterministically from the result shape** (stat tile / line / pivoted multi-line / horizontal bar / table only), no extra LLM call; styling per the data-viz skill's validated palette and mark specs. |
 | Commits | **Conventional Commits, one per completed vertical slice**, on `main`. See §9. |
+| **v2 (2026-10-02, supersedes latency goals above)** | **Accuracy first, latency not a goal.** Orchestration on **LangGraph** (Postgres checkpointer in `app`; guard + scoped executor stay the only data path). **Adaptive HITL:** interrupt only on ambiguity, candidate disagreement or verifier flags; per-user "always review plan" toggle. **Self-consistency:** 3 SQL candidates (Sonnet ×2 + gpt-oss), Sonnet for plan/verify. **Context:** last N turns verbatim + rolling summary compacted at ~70% of budget + structured analysis state. **Memory:** per-user memory doc across sessions, user-editable. **Big results:** true count + paginated re-run as same user + streaming CSV. **Artifacts:** versioned, side panel; inline chart/table kept. No hourly question limit; per-user daily $ cap. |
 
 ---
 
@@ -231,6 +232,19 @@ Each bullet is roughly one commit. Every commit leaves the repo runnable.
 - `docs: DESIGN.md (architecture diagram, decisions, trade-offs, future work)`
 - `docs: demo script + transcript`
 
+**Phase 11 — v2 rebuild: accuracy-first, LangGraph + HITL** (decided 2026-10-02, after interview feedback; see §2 "v2")
+- `docs: product assumptions section in DESIGN.md (build-time assumptions, not per-query LLM ones)`
+- `feat(chat): remove per-hour question limit; per-user daily $ cap instead`
+- `feat(results): true row count, paginated rows endpoint (re-runs guarded SQL as the same user), streaming CSV export`
+- `feat(nl2sql): LangGraph orchestration — existing stages as nodes, Postgres checkpointer in app schema, SSE from astream`
+- `feat(nl2sql): analysis plan node + adaptive HITL interrupts (ambiguity, candidate disagreement, verifier flags) + resume endpoint`
+- `feat(nl2sql): self-consistency — 3 candidates (Sonnet ×2 + gpt-oss), execute, reconcile result sets`
+- `feat(nl2sql): verifier — contract-rule AST lint + result sanity checks, loop to repair`
+- `feat(memory): per-user memory doc (app.user_memory), async extraction, injected into all sessions, view/edit/clear UI`
+- `feat(chat): context compaction — last N verbatim + rolling summary at ~70% budget + structured analysis state`
+- `feat(artifacts): app.artifacts (versioned per follow-up), side panel with full table/chart/SQL/export, per-session list; inline view kept`
+- `test(evals): accuracy, confidence calibration, HITL rate; latency target dropped`
+
 ---
 
 ## 8. Testing strategy
@@ -290,6 +304,6 @@ Status as of 2026-09-25:
 
 ## 11. Open decisions (ask the user when reached; do not assume)
 
-- Resolved: HTTPS = CloudFront default domain; region `us-east-2`, RDS db.t4g.small after micro timed out (~$73/mo); rate limit 10 questions/hour/user; production inference = gpt-oss-120b on Bedrock (§2).
+- Resolved: HTTPS = CloudFront default domain; region `us-east-2`, RDS db.t4g.small after micro timed out (~$73/mo); rate limit 10 questions/hour/user (removed in v2); production inference = gpt-oss-120b on Bedrock (§2).
 - Observability: DB traces only, or also Langfuse/OpenTelemetry.
 - Whether to scale ECS to zero off-hours.
