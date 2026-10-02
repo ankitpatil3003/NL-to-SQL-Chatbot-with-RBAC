@@ -26,6 +26,15 @@ PRICES: dict[str, tuple[float, float]] = {
     "nova-lite": (0.06, 0.24),
     "llama4-maverick": (0.24, 0.97),
     "deepseek.r1": (1.35, 5.40),
+    # aws.amazon.com/bedrock/pricing, us-east-1 on-demand, checked 2026-10-02
+    "deepseek.v3.2": (0.62, 1.85),
+    "kimi-k2.5": (0.60, 3.00),
+    "kimi-k2-thinking": (0.60, 2.50),
+    "glm-5": (1.00, 3.20),
+    "glm-4.7": (0.60, 2.20),
+    "qwen3-next-80b": (0.15, 1.20),
+    "minimax-m2.5": (0.30, 1.20),
+    "mistral-large-3": (0.50, 1.50),
 }
 
 RETRYABLE_CODES = {
