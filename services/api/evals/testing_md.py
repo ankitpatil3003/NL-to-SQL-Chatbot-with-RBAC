@@ -164,7 +164,17 @@ def render(report: dict[str, Any]) -> str:
         )
         + ".",
         "- **By category:** " + ", ".join(f"{k} {v}" for k, v in summary["by_category"].items()),
-        f"- **Latency:** p50 {summary['latency_p50_ms'] / 1000:.1f}s, p95 {summary['latency_p95_ms'] / 1000:.1f}s per question; "
+        *(
+            [
+                "- **Confidence calibration:** correct answers at high / medium / low confidence: "
+                + " / ".join(conf.get(c, "-") for c in ("high", "medium", "low"))
+                + f"; {summary.get('would_ask', 0)} turn(s) would have asked the user in the app; "
+                f"candidates unanimous on {summary.get('unanimous', 0)}/{summary.get('with_candidates', 0)}."
+            ]
+            if (conf := summary.get("by_confidence"))
+            else []
+        ),
+        f"- **Latency (informational; v2 optimises accuracy):** p50 {summary['latency_p50_ms'] / 1000:.1f}s, p95 {summary['latency_p95_ms'] / 1000:.1f}s per question; "
         f"**cost** ${summary['cost_usd_total']:.4f} for the whole run; {summary['fell_back']} model fallback(s).",
         "- **Scoring:** execution accuracy. Each reference SQL runs *as the same user*, so RBAC scoping is part of "
         "the expected answer; the assistant's result must contain the reference rows (numbers within rounding "

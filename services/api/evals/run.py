@@ -4,10 +4,17 @@
     uv run python -m evals.run --arm nemotron=openrouter:nvidia/nemotron-3-super-120b-a12b:free \\
                                --arm claude=anthropic:claude-sonnet-5 --only ms-zenovax-exec
 
+    uv run python -m evals.run --candidates 1                    # self-consistency off (A/B)
+
 Each --arm name=chain overrides the SQL-generation step (LLM_CHAIN_SQL) only, so arms differ in
 exactly one variable; understanding and answering use the default chain. Arms run concurrently,
 cases within an arm sequentially (free-tier rate limits). Writes evals/reports/<stamp>.json and
 <stamp>.md (summary + per-case results) with the git commit and prompt version for reproducibility.
+
+v2 is accuracy first, so the report leads with accuracy and its calibration: accuracy per
+confidence level (does "high" mean right?), how often a turn would have asked the user (the plan
+had open questions, or the candidates split; evals never pause, they take the defaults), and how
+often the candidates agreed. Latency and cost are reported, not targeted.
 """
 
 import argparse
@@ -55,6 +62,10 @@ class CaseResult:
     cost_usd: float | None
     sql_attempts: int
     fell_back: bool
+    confidence: str | None = None  # high | medium | low (None: no result, e.g. refused)
+    agreement: str | None = None  # unanimous | majority | split | single | none
+    would_ask: bool = False  # in the app this turn would have paused for the user
+    verify: list[str] = field(default_factory=list)  # verifier findings on the chosen query
     sql: str | None = None
     answer: str = ""
     models: list[str] = field(default_factory=list)
@@ -112,6 +123,9 @@ async def trace_stats(engine: Any, trace_id: str | None) -> dict[str, Any]:
             "sql_attempts": 0,
             "fell_back": False,
             "models": [],
+            "agreement": None,
+            "would_ask": False,
+            "verify": [],
         }
     async with engine.connect() as conn:
         row = (
@@ -123,12 +137,17 @@ async def trace_stats(engine: Any, trace_id: str | None) -> dict[str, Any]:
             )
         ).one()
     calls = row.detail.get("llm_calls", [])
+    agreement = (row.detail.get("consensus") or {}).get("agreement")
+    plans = row.detail.get("plans") or [{}]
     return {
         "latency_ms": row.latency_ms,
         "cost_usd": float(row.cost_usd) if row.cost_usd is not None else None,
         "sql_attempts": len(row.detail.get("sql_attempts", [])),
         "fell_back": any(c["fell_back"] for c in calls),
         "models": [f"{c['task']}:{c['model']}" for c in calls],
+        "agreement": agreement,
+        "would_ask": bool(plans[-1].get("open_questions")) or agreement == "split",
+        "verify": row.detail.get("verify", []),
     }
 
 
@@ -156,6 +175,7 @@ async def run_case(
     return CaseResult(
         id=case["id"], category=case["category"], user=case["user"], passed=passed, reason=reason,
         status=result.status, sql=result.sql, answer=result.answer, **stats,
+        confidence=result.confidence,
         question=case["question"], columns=table.columns if table else [],
         actual_rows=[list(r) for r in table.rows[:10]] if table else [],
         expected_rows=[[jsonable(v) for v in r] for r in (reference_rows or [])[:10]],
@@ -164,10 +184,17 @@ async def run_case(
 
 
 async def run_arm(
-    name: str, chain: str | None, cases: list[dict[str, Any]], users: dict[str, str]
+    name: str,
+    chain: str | None,
+    cases: list[dict[str, Any]],
+    users: dict[str, str],
+    candidates: int | None = None,
 ) -> list[CaseResult]:
     base = get_settings()
-    settings: Settings = base.model_copy(update={"llm_chain_sql": chain}) if chain else base
+    update: dict[str, Any] = {"llm_chain_sql": chain} if chain else {}
+    if candidates:
+        update["sql_candidates"] = candidates
+    settings: Settings = base.model_copy(update=update)
     engine = build_engine(settings)
     executor = QueryExecutor(settings)
     llm = build_router(settings)
@@ -212,12 +239,20 @@ def nearest_rank(values: list[int], q: float) -> int:
     return ordered[max(0, math.ceil(q * len(ordered)) - 1)]
 
 
+def rate(passed: list[bool]) -> str:
+    return f"{sum(passed)}/{len(passed)}" if passed else "-"
+
+
 def summarise(results: list[CaseResult]) -> dict[str, Any]:
     latencies = [r.latency_ms for r in results]
     costs = [r.cost_usd for r in results if r.cost_usd is not None]
     categories: dict[str, list[bool]] = {}
+    by_confidence: dict[str, list[bool]] = {}
     for r in results:
         categories.setdefault(r.category, []).append(r.passed)
+        if r.confidence:
+            by_confidence.setdefault(r.confidence, []).append(r.passed)
+    agreed = [r.agreement for r in results if r.agreement]
     return {
         "cases": len(results),
         "passed": sum(r.passed for r in results),
@@ -228,6 +263,13 @@ def summarise(results: list[CaseResult]) -> dict[str, Any]:
         "cost_usd_total": round(sum(costs), 4),
         "repaired": sum(r.sql_attempts > 1 for r in results),
         "fell_back": sum(r.fell_back for r in results),
+        # calibration: is "high confidence" actually right more often than "low"?
+        "by_confidence": {c: rate(by_confidence.get(c, [])) for c in ("high", "medium", "low")},
+        "would_ask": sum(r.would_ask for r in results),
+        "unanimous": sum(a == "unanimous" for a in agreed),
+        "with_candidates": len(agreed),
+        "verifier_flags": sum(bool(r.verify) for r in results),
+        "cost_per_question_usd": round(sum(costs) / len(costs), 4) if costs else None,
     }
 
 
@@ -266,14 +308,32 @@ def write_report(
         "",
     ]
     lines += [
-        "| arm | SQL model | accuracy | p50 latency | p95 latency | cost | repaired | fell back |",
-        "|---|---|---|---|---|---|---|---|",
+        "| arm | SQL model | accuracy | high conf. | medium | low | would ask | unanimous | verifier flags | cost/question |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for n, s in summaries.items():
+        conf = s["by_confidence"]
+        cost = (
+            f"${s['cost_per_question_usd']:.4f}" if s["cost_per_question_usd"] is not None else "-"
+        )
         lines.append(
             f"| {n} | `{chains[n] or 'default chain'}` | **{s['passed']}/{s['cases']} ({s['accuracy']:.0%})** | "
-            f"{s['latency_p50_ms'] / 1000:.1f}s | {s['latency_p95_ms'] / 1000:.1f}s | ${s['cost_usd_total']:.4f} | {s['repaired']} | {s['fell_back']} |"
+            f"{conf['high']} | {conf['medium']} | {conf['low']} | {s['would_ask']} | "
+            f"{s['unanimous']}/{s['with_candidates']} | {s['verifier_flags']} | {cost} |"
         )
+    lines += [
+        "",
+        "Confidence columns: correct/total among answers at that confidence (calibration). "
+        "Would ask: turns that would have paused for the user in the app (open plan questions or "
+        "split candidates); evals take the defaults instead.",
+        "",
+        "Informational (not a target in v2): "
+        + "; ".join(
+            f"{n}: p50 {s['latency_p50_ms'] / 1000:.1f}s, p95 {s['latency_p95_ms'] / 1000:.1f}s, "
+            f"{s['repaired']} repaired, {s['fell_back']} fell back"
+            for n, s in summaries.items()
+        ),
+    ]
     categories = sorted({c for s in summaries.values() for c in s["by_category"]})
     lines += [
         "",
@@ -304,7 +364,7 @@ def write_report(
     return path
 
 
-async def main(arms: list[str], only: set[str] | None) -> None:
+async def main(arms: list[str], only: set[str] | None, candidates: int | None = None) -> None:
     spec = yaml.safe_load((HERE / "golden.yaml").read_text(encoding="utf-8"))
     cases = [c for c in spec["cases"] if not only or c["id"] in only]
     chains: dict[str, str | None] = {}
@@ -314,7 +374,7 @@ async def main(arms: list[str], only: set[str] | None) -> None:
     print(f"{len(cases)} cases x {len(chains)} arms", flush=True)
 
     results = await asyncio.gather(
-        *(run_arm(n, c, cases, spec["users"]) for n, c in chains.items())
+        *(run_arm(n, c, cases, spec["users"], candidates) for n, c in chains.items())
     )
     runs = dict(zip(chains, results, strict=True))
 
@@ -339,5 +399,11 @@ if __name__ == "__main__":
         help="name=provider:model[,provider:model] for the SQL step",
     )
     parser.add_argument("--only", help="comma-separated case ids")
+    parser.add_argument(
+        "--candidates",
+        type=int,
+        choices=[1, 2, 3],
+        help="SQL candidates per question (default: SQL_CANDIDATES)",
+    )
     args = parser.parse_args()
-    asyncio.run(main(args.arm, set(args.only.split(",")) if args.only else None))
+    asyncio.run(main(args.arm, set(args.only.split(",")) if args.only else None, args.candidates))
