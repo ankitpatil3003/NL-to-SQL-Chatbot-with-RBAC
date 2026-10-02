@@ -52,3 +52,6 @@ infra/terraform/backend.hcl
 
 # Local screen recordings (the demo video is linked from DEMO.md, not committed)
 *.mp4
+
+# Explanatory docs (the technical guide)
+docs/NovaPharma_NL2SQL_Technical_Guide.pdf
