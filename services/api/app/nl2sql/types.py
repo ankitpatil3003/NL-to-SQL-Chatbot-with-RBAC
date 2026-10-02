@@ -104,6 +104,7 @@ class TurnResult:
     plan: dict[str, Any] | None = None  # the AnalysisPlan the answer followed
     review: dict[str, Any] | None = None  # what the user is asked, when status == needs_input
     confidence: str | None = None  # high | medium | low: candidate agreement and checks
+    follow_up: bool = False  # refines the previous result (its artifact gets a new version)
 
 
 @dataclass(frozen=True, slots=True)

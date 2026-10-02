@@ -438,6 +438,7 @@ async def answer_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
             notes=notes,
             plan=state["plan"].model_dump() if state["plan"] else None,
             confidence=confidence,
+            follow_up=state["understanding"].is_follow_up,
         )
     )
 

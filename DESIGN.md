@@ -165,6 +165,14 @@ sliding window (the old behaviour: silent loss), summary only (Claude.ai / Claud
 compaction), and retrieval over past turns (ChatGPT "reference chat history"). The last one is
 a natural next step.
 
+**Results as artifacts.** Every answered result is an artifact the chat can reopen in a side
+panel, as Claude does for large outputs. The chart and table also stay inline under the
+question. An artifact is the result's message plus `{id, version, title}` in its payload: the
+table, query and plan are already stored with the message, so a separate table would duplicate
+them. A follow-up that refines a result ("now by quarter") is the next version of the same
+artifact. The panel lists the chat's results and opens one full size, with version tabs, every
+row (server-paged), the chart, the SQL and the CSV export.
+
 Each stage is a module with typed inputs and outputs. Providers, retriever and executor are injected,
 so every stage runs in tests against fakes or the real database. The same `Pipeline` serves the SSE
 endpoint, the CLI (`python -m app.cli --user <email> "q1" "q2"`) and the eval harness, so what gets

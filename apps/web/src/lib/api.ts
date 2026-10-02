@@ -82,6 +82,7 @@ export interface AssistantPayload {
   plan?: AnalysisPlan | null; // what the answer computed
   review?: PlanReview | DisagreementReview | null; // when status is needs_input
   confidence?: "high" | "medium" | "low" | null; // candidate agreement + rule checks
+  artifact?: { id: string; version: number; title: string } | null; // see lib/artifacts.ts
 }
 
 export interface ChatMessage {

@@ -18,8 +18,11 @@ import {
   streamTurn,
 } from "@/lib/api";
 
+import { collectArtifacts } from "@/lib/artifacts";
+
+import ArtifactPanel, { type PanelView } from "./ArtifactPanel";
 import Composer from "./Composer";
-import { SidebarIcon } from "./icons";
+import { LayersIcon, SidebarIcon } from "./icons";
 import Message, { type UiMessage } from "./Message";
 
 import Sidebar from "./Sidebar";
@@ -72,6 +75,8 @@ export default function ChatShell() {
   const activeId = urlSessionId;
   const messages = thread.id === activeId ? thread.messages : [];
   const [busy, setBusy] = useState(false);
+  // The results panel belongs to one chat: switching chats hides it.
+  const [panel, setPanel] = useState<(PanelView & { chat: string | null }) | null>(null);
   // Read once on mount. The composer only renders after /me loads on the client, so the server
   // render (no storage) never has to agree with it.
   const [reviewPlans, setReviewPlans] = useState(() => {
@@ -220,6 +225,9 @@ export default function ChatShell() {
   if (!me) return <div className="m-auto p-6 text-fg-muted">Loading…</div>;
 
   const empty = messages.length === 0;
+  const artifacts = collectArtifacts(messages);
+  const panelView = panel && panel.chat === activeId ? panel : null;
+  const openPanel = (view: PanelView) => setPanel({ ...view, chat: activeId });
   return (
     <div className="flex h-dvh w-full overflow-hidden">
       <Sidebar
@@ -259,6 +267,16 @@ export default function ChatShell() {
           <span className="truncate text-sm text-fg-secondary">
             {sessions.find((s) => s.session_id === activeId)?.title ?? (activeId ? "" : "New chat")}
           </span>
+          <span className="flex-1" />
+          {artifacts.length > 0 && (
+            <button
+              onClick={() => (panelView ? setPanel(null) : openPanel({ artifactId: null }))}
+              title="Results in this chat"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-fg-secondary hover:bg-bg-muted hover:text-fg"
+            >
+              <LayersIcon width={16} height={16} /> Results ({artifacts.length})
+            </button>
+          )}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -292,6 +310,7 @@ export default function ChatShell() {
                     key={m.key}
                     message={m}
                     onRespond={i === messages.length - 1 && !busy ? respond : undefined}
+                    onOpenArtifact={(artifactId, version) => openPanel({ artifactId, version })}
                   />
                 ))}
                 <div ref={bottomRef} />
@@ -314,6 +333,14 @@ export default function ChatShell() {
           </p>
         </div>
       </main>
+      {panelView && (
+        <ArtifactPanel
+          artifacts={artifacts}
+          view={panelView}
+          onView={openPanel}
+          onClose={() => setPanel(null)}
+        />
+      )}
     </div>
   );
 }

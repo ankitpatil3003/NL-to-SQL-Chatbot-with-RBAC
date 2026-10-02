@@ -469,11 +469,12 @@ def test_a_new_question_replaces_a_paused_plan(hitl_api) -> None:  # type: ignor
     assert dict(stream(client, "units by drug?", session_id))["result"]["status"] == "answered"
     with client.stream("POST", f"/api/chat/sessions/{session_id}/resume", json={}) as resp:
         assert resp.status_code == 409
-    # the abandoned plan isn't a turn: follow-ups see only the answered question
+    # the abandoned question stays as context (marked not run); its plan message isn't a turn
     user_id = client.get("/api/auth/me").json()["user_id"]
     repo = client.app.state.chat._repo  # type: ignore[attr-defined]
     history = client.portal.call(repo.history, user_id, session_id)  # type: ignore[union-attr]
-    assert [t.question for t in history] == ["units by drug?"]
+    assert [t.question for t in history] == ["zenovax units by account", "units by drug?"]
+    assert history[0].answer.startswith("(Not run")  # context for "now by quarter", not a result
     client.delete(f"/api/chat/sessions/{session_id}")
 
 
@@ -655,3 +656,27 @@ async def test_long_chats_compact_older_turns_and_keep_recent_ones_verbatim(
     await repo.delete(user.user_id, session_id)
     await executor.dispose()
     await engine.dispose()
+
+
+def test_results_are_artifacts_and_follow_ups_version_them(api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = api
+    login(client, RAM)
+    script_turn(fake, "Units by drug?")
+    first = stream(client, "units by drug?")
+    session_id, a1 = first[0][1]["session_id"], dict(first)["result"]["artifact"]
+    assert a1["version"] == 1 and a1["title"]
+
+    script_turn(fake, "Units by drug by quarter", follow_up=True)
+    a2 = dict(stream(client, "now by quarter", session_id))["result"]["artifact"]
+    assert a2["id"] == a1["id"] and a2["version"] == 2  # the refinement is a new version
+
+    script_turn(fake, "Units by drug in 340B accounts")
+    a3 = dict(stream(client, "something else", session_id))["result"]["artifact"]
+    assert a3["id"] != a1["id"] and a3["version"] == 1
+    reopened = client.get(f"/api/chat/sessions/{session_id}").json()["messages"]
+    assert [m["payload"]["artifact"]["version"] for m in reopened if m["role"] == "assistant"] == [
+        1,
+        2,
+        1,
+    ]
+    client.delete(f"/api/chat/sessions/{session_id}")

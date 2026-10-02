@@ -222,9 +222,11 @@ const CONFIDENCE: Record<string, { label: string; title: string; className: stri
 export default function Message({
   message,
   onRespond,
+  onOpenArtifact,
 }: {
   message: UiMessage;
   onRespond?: (response: ReviewResponse, label: string) => void;
+  onOpenArtifact?: (artifactId: string, version: number) => void;
 }) {
   if (message.role === "user") {
     return (
@@ -265,7 +267,14 @@ export default function Message({
           {CONFIDENCE[p.confidence].label}
         </p>
       )}
-      {p?.table && <ResultPanel table={p.table} sql={p.sql} messageId={message.key} />}
+      {p?.table && (
+        <ResultPanel
+          table={p.table}
+          sql={p.sql}
+          messageId={message.key}
+          onOpen={p.artifact && onOpenArtifact ? () => onOpenArtifact(p.artifact!.id, p.artifact!.version) : undefined}
+        />
+      )}
       {p && (p.assumptions.length > 0 || p.plan) && (
         <details className="mt-2 text-sm text-fg-muted">
           <summary className="cursor-pointer select-none hover:text-fg-secondary">Approach and assumptions</summary>

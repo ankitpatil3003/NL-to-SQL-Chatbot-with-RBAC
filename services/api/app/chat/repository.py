@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.nl2sql.types import HistoryTurn
 
+# A question whose plan review the user never answered (they asked something else instead).
+NOT_RUN = "(Not run: the user moved on before confirming the analysis plan.)"
+
 
 @dataclass(frozen=True, slots=True)
 class SessionSummary:
@@ -112,12 +115,27 @@ class ChatRepository:
             if payload.get("resume") or payload.get("status") == "needs_input":
                 continue
             if m.role == "user":
+                if pending is not None:  # asked, but its plan was left unanswered: still context
+                    turns.append(HistoryTurn(pending, NOT_RUN))
                 pending = m.content
             elif pending is not None:
                 sql = payload.get("sql")
                 turns.append(HistoryTurn(pending, m.content, sql))
                 pending = None
         return turns  # compaction decides how many go to the model (chat/compaction.py)
+
+    async def latest_artifact(self, session_id: str) -> dict[str, Any] | None:
+        """The newest result artifact in the chat ({id, version, title}), if any."""
+        async with self._engine.connect() as conn:
+            artifact = await conn.scalar(
+                text(
+                    "SELECT payload->'artifact' FROM app.chat_messages "
+                    "WHERE session_id = CAST(:s AS uuid) AND role = 'assistant' "
+                    "AND payload ? 'artifact' ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"s": session_id},
+            )
+        return artifact if isinstance(artifact, dict) else None
 
     async def summary(self, session_id: str) -> tuple[str, int]:
         """The chat's compacted older turns, and how many turns it covers."""

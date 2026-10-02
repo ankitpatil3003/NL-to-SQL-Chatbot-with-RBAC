@@ -8,6 +8,7 @@ answer is saved, so reopening the chat shows it.
 import asyncio
 import dataclasses
 import logging
+import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -190,6 +191,15 @@ class ChatService:
                 log.exception("compaction failed")
         return recent, summary
 
+    async def _artifact(self, session_id: str, question: str, result: TurnResult) -> dict[str, Any]:
+        """Every result is an artifact the chat can reopen in its panel. A follow-up that refines
+        the previous result ("now by quarter") is the next version of that artifact."""
+        title = (result.plan or {}).get("summary") or result.standalone_question or question
+        previous = await self._repo.latest_artifact(session_id)
+        if result.follow_up and previous:
+            return {"id": previous["id"], "version": previous["version"] + 1, "title": title}
+        return {"id": str(uuid.uuid4()), "version": 1, "title": title}
+
     async def _remember(
         self, user: UserContext, question: str, result: TurnResult, current: str
     ) -> None:
@@ -230,6 +240,8 @@ class ChatService:
                     result = event.data
             assert result is not None
             payload = result_payload(result)
+            if result.table is not None:
+                payload["artifact"] = await self._artifact(session_id, message, result)
             message_id = await self._repo.add_message(
                 session_id, "assistant", result.answer, payload
             )

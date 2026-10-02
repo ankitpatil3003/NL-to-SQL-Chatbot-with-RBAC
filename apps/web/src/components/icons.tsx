@@ -20,6 +20,15 @@ function Icon({ children, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
+export const CloseIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}><path d="M6 6l12 12M18 6L6 18" /></Icon>
+);
+export const ExpandIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></Icon>
+);
+export const LayersIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /></Icon>
+);
 export const MemoryIcon = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}><path d="M6 3h12v18l-6-4-6 4z" /></Icon>
 );

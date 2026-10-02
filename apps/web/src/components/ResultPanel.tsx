@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type ResultTable, type Row } from "@/lib/api";
 import { chooseChart, formatValue, humanize } from "@/lib/chart";
 
-import { DownloadIcon } from "./icons";
+import { DownloadIcon, ExpandIcon } from "./icons";
 import ResultChart from "./ResultChart";
 
 type Tab = "chart" | "table" | "sql";
@@ -55,10 +55,14 @@ export default function ResultPanel({
   table,
   sql,
   messageId,
+  expanded = false,
+  onOpen,
 }: {
   table: ResultTable;
   sql: string | null;
   messageId: string;
+  expanded?: boolean; // full size, in the artifact panel
+  onOpen?: () => void; // open this result in the artifact panel
 }) {
   const [page, setPage] = useState(0);
   const { rows, error } = usePagedRows(table, messageId, page);
@@ -94,13 +98,22 @@ export default function ResultPanel({
         >
           <DownloadIcon width={16} height={16} />
         </button>
+        {onOpen && (
+          <button
+            onClick={onOpen}
+            title="Open in the results panel"
+            className="rounded-md p-1 text-fg-muted hover:bg-bg-muted hover:text-fg"
+          >
+            <ExpandIcon width={16} height={16} />
+          </button>
+        )}
       </div>
 
       <div className="p-3">
         {tab === "chart" && <ResultChart table={table} spec={spec} />}
         {tab === "table" && (
           <>
-            <div className="max-h-96 overflow-auto">
+            <div className={`${expanded ? "max-h-[65vh]" : "max-h-96"} overflow-auto`}>
               <table className="w-full border-collapse text-sm tabular-nums">
                 <thead className="sticky top-0 bg-bg-elevated">
                   <tr>
@@ -160,7 +173,9 @@ export default function ResultPanel({
           </>
         )}
         {tab === "sql" && sql && (
-          <pre className="max-h-96 overflow-auto rounded-lg bg-bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+          <pre
+            className={`${expanded ? "max-h-[65vh]" : "max-h-96"} overflow-auto rounded-lg bg-bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap`}
+          >
             {sql}
           </pre>
         )}
