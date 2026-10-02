@@ -79,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ChatRepository(app.state.engine),
                 pipeline,
                 daily_budget_usd=settings.chat_daily_budget_usd,
+                llm=app.state.llm,
             )
         if settings.demo_password:
             # Non-fatal, like the knowledge layer: if the database is briefly unreachable at boot

@@ -4,7 +4,8 @@ import { useState } from "react";
 
 import type { Me, SessionSummary } from "@/lib/api";
 
-import { LogoutIcon, PencilIcon, PlusIcon, SidebarIcon, TrashIcon } from "./icons";
+import { LogoutIcon, MemoryIcon, PencilIcon, PlusIcon, SidebarIcon, TrashIcon } from "./icons";
+import MemoryDialog from "./MemoryDialog";
 import ThemeToggle from "./ThemeToggle";
 
 const ROLE_LABEL = { exec: "Executive", director: "Director", ram: "Account manager" } as const;
@@ -129,6 +130,7 @@ export default function Sidebar({
   onDelete: (id: string) => void;
   onLogout: () => void;
 }) {
+  const [memoryOpen, setMemoryOpen] = useState(false);
   return (
     <>
       {open && <div className="fixed inset-0 z-20 bg-black/30 md:hidden" onClick={onToggle} />}
@@ -185,12 +187,20 @@ export default function Sidebar({
               {ROLE_LABEL[me.role]} · {me.scope_label}
             </div>
           </div>
+          <button
+            onClick={() => setMemoryOpen(true)}
+            title="Memory: what the assistant remembers about you"
+            className="rounded-md p-1.5 text-fg-secondary hover:bg-bg-muted hover:text-fg"
+          >
+            <MemoryIcon />
+          </button>
           <ThemeToggle />
           <button onClick={onLogout} title="Sign out" className="rounded-md p-1.5 text-fg-secondary hover:bg-bg-muted hover:text-fg">
             <LogoutIcon />
           </button>
         </div>
       </aside>
+      <MemoryDialog open={memoryOpen} onClose={() => setMemoryOpen(false)} />
     </>
   );
 }

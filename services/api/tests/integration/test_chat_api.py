@@ -279,7 +279,7 @@ async def test_idle_streams_get_heartbeats(settings: Settings) -> None:
     engine, executor, _kb, _llm, _fake, repo, user = await _service_env(settings)
 
     class SlowPipeline:  # stands in for a SQL step that is silent for a while
-        async def run(self, question, history, user, *, session_id=None, review=False):  # type: ignore[no-untyped-def]
+        async def run(self, question, history, user, **_):  # type: ignore[no-untyped-def]
             await asyncio.sleep(0.35)
             yield Event("result", TurnResult(status="answered", answer="ok", title="Slow"))
 
@@ -568,3 +568,90 @@ def test_an_unrepaired_issue_becomes_a_caveat_and_low_confidence(consensus_api) 
     assert result["confidence"] == "low"
     assert any("combine paid demand, free drug" in n for n in result["notes"])
     client.delete(f"/api/chat/sessions/{events[0][1]['session_id']}")
+
+
+# --- Memory across chats, and compaction within one -------------------------------------------
+
+
+async def _drain(service: ChatService) -> None:
+    import asyncio
+
+    while service._tasks:  # background work (memory updates) still running
+        await asyncio.gather(*list(service._tasks), return_exceptions=True)
+
+
+async def test_memory_is_learned_after_an_answer_and_used_by_the_next_chat(
+    settings: Settings,
+) -> None:
+    engine, executor, kb, llm, fake, repo, user = await _service_env(settings)
+    await repo.save_memory(user.user_id, "")
+    service = ChatService(repo, Pipeline(llm, kb, executor, engine, max_rows=100), llm=llm)
+    script_turn(fake, "Units by drug?")
+    fake.add("memory", "## Frequently asks about\n- unit volume by drug")
+    first = [e async for e in service.stream_turn(user, None, "units by drug?")]
+    await _drain(service)
+    assert (await repo.memory(user.user_id))[0] == "## Frequently asks about\n- unit volume by drug"
+    assert "Latest question: units by drug?" in fake.last("memory").messages[0].content
+
+    script_turn(fake, "Units by drug?")
+    fake.add("memory", "## Frequently asks about\n- unit volume by drug")
+    second = [e async for e in service.stream_turn(user, None, "and again?")]
+    assert "- unit volume by drug" in fake.last("router").messages[0].content  # a new chat knows
+    await _drain(service)
+    for events in (first, second):
+        await repo.delete(user.user_id, events[0]["data"]["session_id"])
+    await repo.save_memory(user.user_id, "")
+    async with engine.connect() as conn:  # reader logins can't reach it
+        for role in ("nl2sql_scoped_reader", "nl2sql_exec_reader"):
+            allowed = await conn.scalar(
+                text("SELECT has_table_privilege(:r, 'app.user_memory', 'SELECT')"), {"r": role}
+            )
+            assert allowed is False
+    await executor.dispose()
+    await engine.dispose()
+
+
+def test_memory_endpoints_are_per_user(api) -> None:  # type: ignore[no-untyped-def]
+    client, _ = api
+    login(client, RAM)
+    assert (
+        client.put("/api/chat/memory", json={"content": " - prefers equivalents "}).status_code
+        == 204
+    )
+    assert client.get("/api/chat/memory").json()["content"] == "- prefers equivalents"
+    login(client, OTHER)
+    assert client.get("/api/chat/memory").json()["content"] == ""  # not Amy's
+    login(client, RAM)
+    assert client.put("/api/chat/memory", json={"content": "x" * 2001}).status_code == 422
+    assert client.delete("/api/chat/memory").status_code == 204
+    assert client.get("/api/chat/memory").json()["content"] == ""
+
+
+async def test_long_chats_compact_older_turns_and_keep_recent_ones_verbatim(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.chat import compaction
+
+    monkeypatch.setattr(compaction, "HISTORY_BUDGET_TOKENS", 50)  # any real chat is "long"
+    engine, executor, kb, llm, fake, repo, user = await _service_env(settings)
+    service = ChatService(repo, Pipeline(llm, kb, executor, engine, max_rows=100), llm=llm)
+    session_id = await repo.create_session(user.user_id)
+    for i in range(6):  # six earlier turns
+        await repo.add_message(session_id, "user", f"question {i}")
+        await repo.add_message(session_id, "assistant", f"answer {i} " + "detail " * 20)
+
+    script_turn(fake, "Units by drug?")
+    fake.add("compact", "Earlier: questions 0 and 1 about units.")
+    fake.add("memory", "")
+    events = [e async for e in service.stream_turn(user, session_id, "units by drug?")]
+    assert {"event": "stage", "data": {"name": "compacting"}} in events
+    folded = fake.last("compact").messages[0].content
+    assert "question 0" in folded and "question 1" in folded and "question 2" not in folded
+    assert await repo.summary(session_id) == ("Earlier: questions 0 and 1 about units.", 2)
+    sent = fake.last("router").messages[0].content
+    assert "Earlier: questions 0 and 1 about units." in sent
+    assert "question 1" not in sent and all(f"question {i}" in sent for i in range(2, 6))
+    await _drain(service)
+    await repo.delete(user.user_id, session_id)
+    await executor.dispose()
+    await engine.dispose()

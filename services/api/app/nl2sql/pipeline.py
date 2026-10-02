@@ -69,10 +69,14 @@ class Pipeline:
         *,
         session_id: str | None = None,
         review: bool = False,
+        summary: str = "",
+        memory: str = "",
     ) -> AsyncIterator[Event]:
-        """A new turn. `review`: the user wants to see the plan before it runs."""
+        """A new turn. `review`: the user wants to see the plan before it runs. `summary`: the
+        chat's compacted older turns; `memory`: the user's cross-session memory."""
         trace = TurnTrace(user.user_id, question, self.prompt_version, session_id)
-        async for event in self._execute(new_turn(question, history), user, trace, review):
+        state = new_turn(question, history, summary, memory)
+        async for event in self._execute(state, user, trace, review):
             yield event
 
     async def resume(

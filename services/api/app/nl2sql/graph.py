@@ -52,7 +52,7 @@ from app.nl2sql.types import (
     TurnResult,
     Understanding,
 )
-from app.nl2sql.understand import understand
+from app.nl2sql.understand import render_background, understand
 from app.nl2sql.verify import Issue, check
 from app.observability.trace import TurnTrace
 from app.rbac.context import UserContext
@@ -111,7 +111,9 @@ class TurnDeps:
 
 class TurnState(TypedDict, total=False):
     question: str
-    history: list[HistoryTurn]
+    history: list[HistoryTurn]  # the chat's recent turns, verbatim
+    summary: str  # the chat's older turns, compacted
+    memory: str  # the user's cross-session memory
     understanding: Understanding
     docs: list[Hit]
     examples: list[SelectedExample]
@@ -133,12 +135,16 @@ class TurnState(TypedDict, total=False):
     result: TurnResult | None
 
 
-def new_turn(question: str, history: list[HistoryTurn]) -> TurnState:
+def new_turn(
+    question: str, history: list[HistoryTurn], summary: str = "", memory: str = ""
+) -> TurnState:
     """A turn's input. A chat's checkpoint thread keeps the previous turn's values, so every
     per-turn key is reset here rather than inherited."""
     return TurnState(
         question=question,
         history=history,
+        summary=summary,
+        memory=memory,
         docs=[],
         examples=[],
         resolutions=[],
@@ -179,7 +185,14 @@ async def understand_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
     deps = runtime.context
     _emit("stage", "understanding")
     with deps.trace.stage("understand"):
-        intent, routed = await understand(deps.llm, state["question"], state["history"], deps.user)
+        intent, routed = await understand(
+            deps.llm,
+            state["question"],
+            state["history"],
+            deps.user,
+            summary=state["summary"],
+            memory=state["memory"],
+        )
     deps.trace.add_llm("router", routed)
     deps.trace.detail["understanding"] = intent.model_dump()
     return {"understanding": intent}
@@ -216,9 +229,11 @@ async def plan_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
     deps = runtime.context
     _emit("stage", "planning")
     with deps.trace.stage("plan"):
-        plan, routed = await make_plan(
-            deps.llm, deps.kb, deps.user, _context(state, deps), state["feedback"]
-        )
+        background = render_background(state["summary"], state["memory"])
+        context = _context(state, deps)
+        if background:
+            context = f"## Background\n{background}\n\n{context}"
+        plan, routed = await make_plan(deps.llm, deps.kb, deps.user, context, state["feedback"])
     deps.trace.add_llm("plan", routed)
     deps.trace.detail.setdefault("plans", []).append(plan.model_dump())
     return {"plan": plan, "replan": False}

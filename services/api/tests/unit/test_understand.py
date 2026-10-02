@@ -1,14 +1,14 @@
 from app.nl2sql.types import HistoryTurn, Mention, Understanding
-from app.nl2sql.understand import ANSWER_CHARS, HISTORY_TURNS, render_history, understand
+from app.nl2sql.understand import ANSWER_CHARS, render_history, understand
 
 from ..fakes import scripted_router
 from .test_sqlguard import RAM
 
 
-def test_history_is_bounded_and_answers_truncated() -> None:
-    history = [HistoryTurn(f"q{i}", "x" * (ANSWER_CHARS + 50)) for i in range(HISTORY_TURNS + 3)]
-    rendered = render_history(history)
-    assert "q0" not in rendered and f"q{HISTORY_TURNS + 2}" in rendered
+def test_history_renders_every_turn_given_and_truncates_long_answers() -> None:
+    history = [HistoryTurn(f"q{i}", "x" * (ANSWER_CHARS + 50)) for i in range(7)]
+    rendered = render_history(history)  # how many turns fit is compaction's job, upstream
+    assert "q0" in rendered and "q6" in rendered
     assert "x" * ANSWER_CHARS + "..." in rendered
     assert render_history([]) == "(no earlier messages)"
 
@@ -26,3 +26,14 @@ async def test_understand_sends_history_and_returns_validated_model() -> None:
     sent = fake.last("router").messages[0].content
     assert "What are my top 5 accounts this quarter?" in sent and sent.endswith("now by month")
     assert "data scope: New York Metro territory" in sent
+
+
+async def test_memory_and_summary_reach_the_prompt() -> None:
+    llm, fake = scripted_router()
+    fake.add("router", Understanding(intent="smalltalk", standalone_question="hi", is_follow_up=False,
+                                     asks_for_dollars=False, mentions=[], reply="Hi", title="Hi"))  # fmt: skip
+    await understand(llm, "hi", [], RAM, summary="Earlier: ZENOVAX share by territory.",
+                     memory="## Preferences\n- prefers equivalents")  # fmt: skip
+    sent = fake.last("router").messages[0].content
+    assert "prefers equivalents" in sent and "preferences, not permissions" in sent
+    assert "Earlier: ZENOVAX share by territory." in sent

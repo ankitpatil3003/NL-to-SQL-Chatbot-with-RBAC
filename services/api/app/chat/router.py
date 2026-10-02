@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth.deps import CurrentUser
+from app.chat.memory import MAX_CHARS as MEMORY_MAX_CHARS
 from app.chat.repository import ChatRepository
 from app.chat.service import (
     BudgetExceeded,
@@ -140,6 +141,36 @@ async def rename_session(
 async def delete_session(session_id: UUID, request: Request, user: CurrentUser) -> Response:
     if not await _repo(request).delete(user.user_id, str(session_id)):
         raise _not_found()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Memory: what the assistant remembers about the user across chats (theirs to read and edit).
+
+
+class MemoryOut(BaseModel):
+    content: str
+    updated_at: datetime | None
+
+
+class MemoryIn(BaseModel):
+    content: str = Field(max_length=MEMORY_MAX_CHARS)
+
+
+@router.get("/memory")
+async def get_memory(request: Request, user: CurrentUser) -> MemoryOut:
+    content, updated_at = await _repo(request).memory(user.user_id)
+    return MemoryOut(content=content, updated_at=updated_at)
+
+
+@router.put("/memory", status_code=status.HTTP_204_NO_CONTENT)
+async def put_memory(body: MemoryIn, request: Request, user: CurrentUser) -> Response:
+    await _repo(request).save_memory(user.user_id, body.content.strip())
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/memory", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_memory(request: Request, user: CurrentUser) -> Response:
+    await _repo(request).save_memory(user.user_id, "")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

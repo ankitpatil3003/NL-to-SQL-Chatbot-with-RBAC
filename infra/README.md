@@ -66,6 +66,7 @@ Then open the printed URL, or run the browser tests against it:
 
 ```bash
 infra/deploy.sh up               # builds images for the current commit, rolls both services
+infra/deploy.sh migrate          # after a release that adds db/*.sql (e.g. 50_memory.sql): no data reload
 infra/deploy.sh down             # destroys everything except the state bucket
 ```
 

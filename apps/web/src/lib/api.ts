@@ -142,6 +142,10 @@ export const api = {
       `/api/chat/messages/${messageId}/rows?offset=${offset}&limit=${limit}`,
     ),
   exportUrl: (messageId: string) => `/api/chat/messages/${messageId}/export`,
+  memory: () => request<{ content: string; updated_at: string | null }>("/api/chat/memory"),
+  saveMemory: (content: string) =>
+    request<void>("/api/chat/memory", { method: "PUT", body: JSON.stringify({ content }) }),
+  clearMemory: () => request<void>("/api/chat/memory", { method: "DELETE" }),
 };
 
 // --- Streaming turn (server-sent events over a POST) --------------------------------------------

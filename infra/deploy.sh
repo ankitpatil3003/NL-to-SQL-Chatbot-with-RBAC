@@ -4,6 +4,7 @@
 #   infra/deploy.sh bootstrap   # once: create the Terraform state bucket, write backend.hcl
 #   infra/deploy.sh up          # init -> ECR repos -> build+push images -> full apply -> smoke test
 #   infra/deploy.sh load        # run the one-off data loader task (first deploy, or to reload)
+#   infra/deploy.sh migrate     # apply db/*.sql only (new app tables), no data reload
 #   infra/deploy.sh smoke       # check the public URL end to end
 #   infra/deploy.sh down        # destroy everything (the state bucket stays)
 #
@@ -65,15 +66,27 @@ cmd_up() {
 }
 
 cmd_load() {
-  local loader cluster task
+  run_loader "" "generating and loading 2M rows, ~2-3 min"
+  echo "data loaded; api restarted"
+}
+
+# Additive schema changes (db/*.sql is idempotent): same loader task, migrations only.
+cmd_migrate() {
+  run_loader '{"containerOverrides":[{"name":"loader","command":["--schema-only"]}]}' "migrations only"
+  echo "migrations applied; api restarted"
+}
+
+run_loader() {  # $1: run-task --overrides JSON ("" = the image's default command), $2: label
+  local loader cluster task overrides=()
+  [ -n "$1" ] && overrides=(--overrides "$1")
   loader="$(out_json loader)"; cluster="$(out cluster)"
   read -r taskdef subnets sg < <(echo "$loader" | python -c "
 import json,sys; d=json.load(sys.stdin); print(d['task_definition'], ','.join(d['subnets']), d['security_group'])")
   task="$(aws ecs run-task --region "$REGION" --cluster "$cluster" --launch-type FARGATE \
-    --task-definition "$taskdef" \
+    --task-definition "$taskdef" "${overrides[@]}" \
     --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$sg],assignPublicIp=ENABLED}" \
     --query 'tasks[0].taskArn' --output text)"
-  echo "loader task: $task (generating and loading 2M rows, ~2-3 min)"
+  echo "loader task: $task ($2)"
   aws ecs wait tasks-stopped --region "$REGION" --cluster "$cluster" --tasks "$task"
   local code; code="$(aws ecs describe-tasks --region "$REGION" --cluster "$cluster" --tasks "$task" \
     --query 'tasks[0].containers[0].exitCode' --output text)"
@@ -82,7 +95,6 @@ import json,sys; d=json.load(sys.stdin); print(d['task_definition'], ','.join(d[
   # The API syncs credentials and the knowledge index at startup: restart it onto the new data.
   aws ecs update-service --region "$REGION" --cluster "$cluster" --service api --force-new-deployment >/dev/null
   aws ecs wait services-stable --region "$REGION" --cluster "$cluster" --services api
-  echo "data loaded; api restarted"
 }
 
 cmd_smoke() {
@@ -98,4 +110,4 @@ cmd_down() {
   $TF main destroy -input=false -var "image_tag=unused"
 }
 
-"cmd_${1:?usage: deploy.sh bootstrap|up|load|smoke|down}"
+"cmd_${1:?usage: deploy.sh bootstrap|up|load|migrate|smoke|down}"

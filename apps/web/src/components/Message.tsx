@@ -24,6 +24,7 @@ const STAGE_LABEL: Record<string, string> = {
   retrieving: "Looking up definitions and similar questions",
   planning: "Planning the analysis",
   checking: "Checking the result",
+  compacting: "Summarizing the earlier conversation",
   writing_sql: "Writing and checking the query",
   answering: "Writing the answer",
 };

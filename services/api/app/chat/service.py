@@ -11,7 +11,10 @@ import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
+from app.chat import compaction
+from app.chat.memory import updated_memory
 from app.chat.repository import ChatRepository
+from app.llm.router import LLMRouter
 from app.nl2sql.pipeline import Pipeline
 from app.nl2sql.types import Event, HistoryTurn, TurnResult
 from app.rbac.context import UserContext
@@ -86,9 +89,11 @@ class ChatService:
         *,
         daily_budget_usd: float = 0,
         heartbeat_s: float = HEARTBEAT_S,
+        llm: LLMRouter | None = None,
     ) -> None:
         self._repo = repo
         self._pipeline = pipeline
+        self._llm = llm  # for memory and compaction; None turns both off
         self._budget = daily_budget_usd  # 0 = unlimited
         self._heartbeat_s = heartbeat_s
         self._active: set[str] = set()  # user ids with a turn in flight (per API instance)
@@ -104,8 +109,11 @@ class ChatService:
             raise SessionNotFound
         sid = session_id
 
-        def events(history: list[HistoryTurn]) -> AsyncIterator[Event]:
-            return self._pipeline.run(message, history, user, session_id=sid, review=review)
+        def events(history: list[HistoryTurn], summary: str, memory: str) -> AsyncIterator[Event]:
+            return self._pipeline.run(
+                message, history, user, session_id=sid, review=review,
+                summary=summary, memory=memory,
+            )  # fmt: skip
 
         async for item in self._stream(user, sid, message, None, events):
             yield item
@@ -120,7 +128,7 @@ class ChatService:
         if await self._pipeline.pending_review(session_id) is None:
             raise NothingToResume
 
-        def events(_: list[HistoryTurn]) -> AsyncIterator[Event]:
+        def events(*_: Any) -> AsyncIterator[Event]:  # the paused turn already has its context
             return self._pipeline.resume(response, user, session_id=session_id)
 
         text = describe_resume(response)
@@ -141,7 +149,7 @@ class ChatService:
         session_id: str,
         message: str,
         message_payload: dict[str, Any] | None,
-        events: Callable[[list[HistoryTurn]], AsyncIterator[Event]],
+        events: Callable[[list[HistoryTurn], str, str], AsyncIterator[Event]],
     ) -> AsyncIterator[dict[str, Any]]:
         self._active.add(user.user_id)
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
@@ -162,20 +170,58 @@ class ChatService:
                 return
             yield item
 
+    async def _context(
+        self,
+        user: UserContext,
+        session_id: str,
+        queue: asyncio.Queue[dict[str, Any] | None],
+    ) -> tuple[list[HistoryTurn], str]:
+        """The chat's turns for the model: verbatim while they fit, older ones compacted."""
+        turns = await self._repo.history(user.user_id, session_id)
+        summary, folded = await self._repo.summary(session_id)
+        recent = turns[folded:]
+        if self._llm and compaction.needs_compaction(summary, recent):
+            await queue.put({"event": "stage", "data": {"name": "compacting"}})
+            older, recent = recent[: -compaction.KEEP_RECENT], recent[-compaction.KEEP_RECENT :]
+            try:
+                summary = await compaction.fold(self._llm, summary, older)
+                await self._repo.save_summary(session_id, summary, folded + len(older))
+            except Exception:  # keep going with the recent turns only; retried next turn
+                log.exception("compaction failed")
+        return recent, summary
+
+    async def _remember(
+        self, user: UserContext, question: str, result: TurnResult, current: str
+    ) -> None:
+        """Update the user's cross-session memory after an answer (best effort, off the stream)."""
+        assert self._llm is not None
+        try:
+            content = await updated_memory(self._llm, current, question, result)
+            if content and content != current:
+                await self._repo.save_memory(user.user_id, content)
+        except Exception:
+            log.exception("memory update failed")
+
+    def _spawn(self, coro: Any) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)  # strong ref until done
+        task.add_done_callback(self._tasks.discard)
+
     async def _run(
         self,
         user: UserContext,
         session_id: str,
         message: str,
         message_payload: dict[str, Any] | None,
-        events: Callable[[list[HistoryTurn]], AsyncIterator[Event]],
+        events: Callable[[list[HistoryTurn], str, str], AsyncIterator[Event]],
         queue: asyncio.Queue[dict[str, Any] | None],
     ) -> None:
         try:
-            history = await self._repo.history(user.user_id, session_id)
+            history, summary = await self._context(user, session_id, queue)
+            memory = (await self._repo.memory(user.user_id))[0] if self._llm else ""
             await self._repo.add_message(session_id, "user", message, message_payload)
             result: TurnResult | None = None
-            async for event in events(history):
+            async for event in events(history, summary, memory):
                 if event.type == "stage":
                     await queue.put({"event": "stage", "data": {"name": event.data}})
                 elif event.type == "answer_delta":
@@ -199,6 +245,8 @@ class ChatService:
             if await self._repo.set_title_if_empty(session_id, title):
                 await queue.put({"event": "title", "data": {"title": title}})
             await queue.put({"event": "done", "data": {}})
+            if self._llm and result.status == "answered" and result.table is not None:
+                self._spawn(self._remember(user, message, result, memory))
         except Exception:
             log.exception("chat turn failed")
             await queue.put(

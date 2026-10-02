@@ -144,6 +144,27 @@ answer. Each answer carries a confidence:
 
 `SQL_CANDIDATES=1` turns self-consistency off.
 
+**Memory across chats** (`chat/memory.py`). Each user has one short markdown profile in
+`app.user_memory` with three sections: what they frequently ask about, their preferences, and
+recurring questions. A small LLM call updates it in the background after each answered turn.
+Every chat's understanding and planning steps receive it, labelled "preferences, not
+permissions". The prompt forbids recording results, numbers, access or instructions, and access is
+enforced by the database anyway. Users read, edit or clear it from the sidebar
+(`GET/PUT/DELETE /api/chat/memory`). This is the "saved memories" pattern from ChatGPT and Claude,
+kept explicit and editable.
+
+**Long chats: compaction plus structured state** (`chat/compaction.py`). A chat's history goes
+to the model verbatim while it fits. Once it passes 70% of the history budget, the older turns
+are folded by an LLM into a rolling summary stored on the chat (`chat_sessions.summary`,
+`summarized_turns`). The newest 4 turns stay verbatim. The summary keeps what follow-ups refer
+back to: filters, periods, corrections, and key figures with their values. It is incremental (old
+summary plus newly aged turns) and runs at most once per turn. The structured state a follow-up
+needs most (the previous question's SQL and plan) always travels with the newest turn, so
+"now by quarter" edits the last analysis rather than re-reading prose. Options considered: a
+sliding window (the old behaviour: silent loss), summary only (Claude.ai / Claude Code style
+compaction), and retrieval over past turns (ChatGPT "reference chat history"). The last one is
+a natural next step.
+
 Each stage is a module with typed inputs and outputs. Providers, retriever and executor are injected,
 so every stage runs in tests against fakes or the real database. The same `Pipeline` serves the SSE
 endpoint, the CLI (`python -m app.cli --user <email> "q1" "q2"`) and the eval harness, so what gets

@@ -11,8 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.nl2sql.types import HistoryTurn
 
-HISTORY_TURNS = 4
-
 
 @dataclass(frozen=True, slots=True)
 class SessionSummary:
@@ -119,7 +117,51 @@ class ChatRepository:
                 sql = payload.get("sql")
                 turns.append(HistoryTurn(pending, m.content, sql))
                 pending = None
-        return turns[-HISTORY_TURNS:]
+        return turns  # compaction decides how many go to the model (chat/compaction.py)
+
+    async def summary(self, session_id: str) -> tuple[str, int]:
+        """The chat's compacted older turns, and how many turns it covers."""
+        async with self._engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT summary, summarized_turns FROM app.chat_sessions "
+                        "WHERE session_id = CAST(:s AS uuid)"
+                    ),
+                    {"s": session_id},
+                )
+            ).first()
+        return (row.summary or "", row.summarized_turns) if row else ("", 0)
+
+    async def save_summary(self, session_id: str, summary: str, turns: int) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE app.chat_sessions SET summary = :m, summarized_turns = :n "
+                    "WHERE session_id = CAST(:s AS uuid)"
+                ),
+                {"m": summary, "n": turns, "s": session_id},
+            )
+
+    async def memory(self, user_id: str) -> tuple[str, datetime | None]:
+        async with self._engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text("SELECT content, updated_at FROM app.user_memory WHERE user_id = :u"),
+                    {"u": user_id},
+                )
+            ).first()
+        return (row.content, row.updated_at) if row else ("", None)
+
+    async def save_memory(self, user_id: str, content: str) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO app.user_memory (user_id, content) VALUES (:u, :c) "
+                    "ON CONFLICT (user_id) DO UPDATE SET content = :c, updated_at = now()"
+                ),
+                {"u": user_id, "c": content},
+            )
 
     async def add_message(
         self, session_id: str, role: str, content: str, payload: dict[str, Any] | None = None

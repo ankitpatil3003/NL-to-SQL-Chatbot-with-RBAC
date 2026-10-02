@@ -20,6 +20,9 @@ function Icon({ children, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
+export const MemoryIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}><path d="M6 3h12v18l-6-4-6 4z" /></Icon>
+);
 export const PlusIcon = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}><path d="M12 5v14M5 12h14" /></Icon>
 );
