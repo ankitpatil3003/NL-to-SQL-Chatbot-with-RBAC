@@ -11,7 +11,7 @@ from app.llm.router import LLMRouter, Target
 
 log = logging.getLogger(__name__)
 
-TASKS = ("sql", "router", "rewrite", "answer", "title")
+TASKS = ("sql", "router", "rewrite", "answer", "title", "plan")
 
 
 def build_providers(settings: Settings) -> dict[str, Provider]:

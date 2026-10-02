@@ -7,10 +7,10 @@ them. Every turn, including failures, is traced to app.turn_traces.
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_core.runnables import RunnableConfig
-from langgraph.types import Checkpointer
+from langgraph.types import Checkpointer, Command
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.executor import QueryExecutor
@@ -55,6 +55,10 @@ class Pipeline:
         self._durability: Literal["exit"] | None = "exit" if checkpointer else None
         self.prompt_version = f"p{prompts_hash()}-c{kb.contract.content_hash}"
 
+    @property
+    def can_pause(self) -> bool:
+        return self._durability is not None
+
     async def run(
         self,
         question: str,
@@ -62,17 +66,48 @@ class Pipeline:
         user: UserContext,
         *,
         session_id: str | None = None,
+        review: bool = False,
     ) -> AsyncIterator[Event]:
+        """A new turn. `review`: the user wants to see the plan before it runs."""
         trace = TurnTrace(user.user_id, question, self.prompt_version, session_id)
-        deps = TurnDeps(user, trace, self._llm, self._kb, self._executor, self._max_rows)
+        async for event in self._execute(new_turn(question, history), user, trace, review):
+            yield event
+
+    async def resume(
+        self, response: dict[str, Any], user: UserContext, *, session_id: str
+    ) -> AsyncIterator[Event]:
+        """Continue a paused turn with the user's response to its review."""
+        snapshot = await self._graph.aget_state(_thread(session_id))
+        trace = TurnTrace(
+            user.user_id, snapshot.values.get("question", ""), self.prompt_version, session_id
+        )
+        trace.detail["resumed_with"] = response
+        async for event in self._execute(Command(resume=response), user, trace, False):
+            yield event
+
+    async def pending_review(self, session_id: str) -> dict[str, Any] | None:
+        """What the chat's paused turn is waiting for, if it is paused."""
+        if not self.can_pause:
+            return None
+        snapshot = await self._graph.aget_state(_thread(session_id))
+        if not snapshot.interrupts:
+            return None
+        value = snapshot.interrupts[0].value
+        return value if isinstance(value, dict) else None
+
+    async def _execute(
+        self, graph_input: Any, user: UserContext, trace: TurnTrace, review: bool
+    ) -> AsyncIterator[Event]:
+        deps = TurnDeps(
+            user, trace, self._llm, self._kb, self._executor, self._max_rows,
+            hitl=self.can_pause, always_review=review,
+        )  # fmt: skip
         # One checkpoint thread per chat: a paused turn resumes in the chat it was asked in.
-        config: RunnableConfig = {
-            "configurable": {"thread_id": session_id or f"adhoc-{uuid.uuid4()}"}
-        }
+        config = _thread(trace.session_id or f"adhoc-{uuid.uuid4()}")
+        result: TurnResult | None = None
         try:
-            result = None
             async for mode, chunk in self._graph.astream(
-                new_turn(question, history),
+                graph_input,
                 config,
                 context=deps,
                 stream_mode=STREAM_MODES,
@@ -81,7 +116,11 @@ class Pipeline:
                 if mode == "custom":
                     assert isinstance(chunk, Event)
                     yield chunk
-                elif isinstance(chunk, dict) and "result" in chunk:
+                elif isinstance(chunk, dict) and chunk.get("__interrupt__"):
+                    result = _paused(chunk["__interrupt__"][0].value, chunk)
+                    trace.status = "needs_input"
+                    yield Event("answer_delta", result.answer)
+                elif isinstance(chunk, dict) and chunk.get("result") is not None:
                     result = chunk["result"]
         except LLMUnavailable as exc:
             trace.status, trace.error = "error", str(exc)
@@ -90,13 +129,35 @@ class Pipeline:
             log.exception("turn failed")
             trace.status, trace.error = "error", f"{type(exc).__name__}: {exc}"
             result = TurnResult(status="error", answer=UNEXPECTED)
-        assert isinstance(result, TurnResult)
+        if result is None:  # the graph ended without an answer: a bug, not a user problem
+            trace.status, trace.error = "error", "graph ended without a result"
+            result = TurnResult(status="error", answer=UNEXPECTED)
         result.title = trace.detail.get("understanding", {}).get("title") or None
         try:
             result.trace_id = await save_trace(self._engine, trace)
         except Exception:
             log.exception("could not save trace")
         yield Event("result", result)
+
+
+def _thread(thread_id: str) -> RunnableConfig:
+    return {"configurable": {"thread_id": thread_id}}
+
+
+def _paused(review: dict[str, Any], state: dict[str, Any]) -> TurnResult:
+    plan = review.get("plan") or {}
+    summary = plan.get("summary", "")
+    if review.get("reason") == "ambiguous":
+        answer = f"Before I run this, I need one choice from you. My plan: {summary}"
+    else:
+        answer = f"Here's my plan: {summary} Run it as is, or tell me what to change."
+    understanding = state.get("understanding")
+    return TurnResult(
+        status="needs_input",
+        answer=answer,
+        standalone_question=understanding.standalone_question if understanding else None,
+        review=review,
+    )
 
 
 async def ask(

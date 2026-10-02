@@ -105,6 +105,20 @@ checkpointed: they travel in LangGraph's per-run context, and the user is re-res
 `public.users` on every request. The guard and the scoped executor remain the only way any node
 reaches data.
 
+**Plan, then human review (adaptive HITL).** Before any SQL, a `plan` node writes an
+`AnalysisPlan` in business language: measure, filters, breakdown, period, the rule ids it follows,
+and the **open questions**, meaning only readings that would change the numbers ("grew the most":
+absolute or percent?). The `review` node pauses the turn with a LangGraph `interrupt` when the
+plan has open questions, or when the user turned on "Review plan first". The chat shows the plan as
+a card. The user picks options and/or types a correction, then `POST /sessions/{id}/resume`
+continues the graph from its checkpoint. Answering the card settles every question (unanswered
+ones keep their default), so the turn never asks the same thing twice. A second review happens
+only to show a plan the user corrected in their own words, capped at 2 rounds. Clear questions
+run straight through. The approved plan goes to the SQL step as an instruction ("approved by the
+user: implement exactly this"), and the answer shows it under "Approach and assumptions". Evals
+and the CLI run without a checkpointer, so they never pause (open questions take their
+defaults).
+
 Each stage is a module with typed inputs and outputs. Providers, retriever and executor are injected,
 so every stage runs in tests against fakes or the real database. The same `Pipeline` serves the SSE
 endpoint, the CLI (`python -m app.cli --user <email> "q1" "q2"`) and the eval harness, so what gets

@@ -14,7 +14,7 @@ from app.chat.service import ChatService, TurnInProgress
 from app.core.config import Settings
 from app.main import create_app
 from app.nl2sql.pipeline import Pipeline
-from app.nl2sql.types import SqlDraft, Understanding
+from app.nl2sql.types import AnalysisPlan, PlanQuestion, SqlDraft, Understanding
 
 from ..fakes import ScriptedProvider, scripted_router
 from .conftest import DEMO_PASSWORD
@@ -92,7 +92,7 @@ def test_new_chat_streams_persists_and_is_listed(api) -> None:  # type: ignore[n
     events = stream(client, "units by drug?")
     names = [n for n, _ in events]
     assert names[0] == "session" and names[-2:] == ["title", "done"]
-    assert names.count("stage") == 4 and "answer_delta" in names
+    assert names.count("stage") == 5 and "answer_delta" in names
     session_id = events[0][1]["session_id"]
     result = dict(events)["result"]
     assert result["status"] == "answered" and result["table"]["rows"] and "LIMIT" in result["sql"]
@@ -279,7 +279,7 @@ async def test_idle_streams_get_heartbeats(settings: Settings) -> None:
     engine, executor, _kb, _llm, _fake, repo, user = await _service_env(settings)
 
     class SlowPipeline:  # stands in for a SQL step that is silent for a while
-        async def run(self, question, history, user, *, session_id=None):  # type: ignore[no-untyped-def]
+        async def run(self, question, history, user, *, session_id=None, review=False):  # type: ignore[no-untyped-def]
             await asyncio.sleep(0.35)
             yield Event("result", TurnResult(status="answered", answer="ok", title="Slow"))
 
@@ -365,3 +365,113 @@ def test_turns_are_checkpointed_per_chat_in_the_app_schema(settings: Settings) -
         assert values["result"].status == "answered" and values["table"].row_count > 0
         assert "user" not in values  # identity is per-run context, never checkpointed
         client.delete(f"/api/chat/sessions/{session_id}")
+
+
+# --- Human in the loop: plan review -----------------------------------------------------------
+
+AMBIGUOUS = AnalysisPlan(
+    summary="Units for ZENOVAX accounts.", metric="Paid demand units", filters=["ZENOVAX"],
+    breakdown="by account", time_window="last quarter", rules=["DS-1", "ORG-1"],
+    open_questions=[PlanQuestion(question="Which account level?",
+                                 options=["Health system", "Individual facility"])],
+    confidence="medium",
+)  # fmt: skip
+
+
+@pytest.fixture
+def hitl_api(settings: Settings) -> Iterator[tuple[TestClient, ScriptedProvider]]:
+    """The chat API with the lifespan's Postgres checkpointer, so turns can pause and resume."""
+    app = create_app(settings)
+    with TestClient(app) as client:
+        state = app.state
+        checkpointer = state.chat._pipeline._graph.checkpointer
+        assert checkpointer is not None
+        llm, fake = scripted_router()
+        pipeline = Pipeline(
+            llm, state.knowledge, state.executor, state.engine, max_rows=1000,
+            checkpointer=checkpointer,
+        )  # fmt: skip
+        state.chat = ChatService(ChatRepository(state.engine), pipeline)
+        yield client, fake
+
+
+def resume(client: TestClient, session_id: str, body: dict[str, Any]) -> list[tuple[str, Any]]:
+    events, name = [], None
+    with client.stream("POST", f"/api/chat/sessions/{session_id}/resume", json=body) as resp:
+        assert resp.status_code == 200, resp.read()
+        for line in resp.iter_lines():
+            if line.startswith("event: "):
+                name = line[7:]
+            elif line.startswith("data: ") and name:
+                events.append((name, json.loads(line[6:])))
+    return events
+
+
+def test_ambiguous_plan_pauses_and_resumes_with_the_users_choice(hitl_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = hitl_api
+    login(client, RAM)
+    script_turn(fake, "ZENOVAX units by account last quarter")
+    # the revised plan still lists the question: answered choices are settled, so no second pause
+    fake.queues["plan"] = [AMBIGUOUS, AMBIGUOUS]
+    events = stream(client, "zenovax units by account last quarter")
+    session_id, paused = events[0][1]["session_id"], dict(events)["result"]
+    assert paused["status"] == "needs_input" and paused["table"] is None
+    assert paused["review"]["reason"] == "ambiguous"
+    assert paused["review"]["plan"]["open_questions"][0]["question"] == "Which account level?"
+    assert not [r for r in fake.requests if r.task == "sql"]  # nothing ran yet
+
+    done = dict(
+        resume(client, session_id, {"answers": {"Which account level?": "Individual facility"}})
+    )
+    assert done["result"]["status"] == "answered" and done["result"]["table"]["rows"]
+    replan = fake.last("plan").messages[0].content
+    assert "Which account level? -> Individual facility" in replan  # the choice reached the planner
+    assert "approved by the user" in fake.last("sql").messages[0].content
+
+    messages = client.get(f"/api/chat/sessions/{session_id}").json()["messages"]
+    assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant"]
+    assert messages[2]["content"] == "Which account level?: Individual facility"
+    # nothing left to resume, and only the owner can resume
+    with client.stream("POST", f"/api/chat/sessions/{session_id}/resume", json={}) as resp:
+        assert resp.status_code == 409
+    login(client, OTHER)
+    with client.stream("POST", f"/api/chat/sessions/{session_id}/resume", json={}) as resp:
+        assert resp.status_code == 404
+    login(client, RAM)
+    client.delete(f"/api/chat/sessions/{session_id}")
+
+
+def test_always_review_shows_a_clear_plan_and_approval_runs_it_unchanged(hitl_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = hitl_api
+    login(client, RAM)
+    script_turn(fake, "Units by drug?")
+    with client.stream(
+        "POST", "/api/chat/stream", json={"message": "units by drug?", "review": True}
+    ) as r:
+        lines = [line for line in r.iter_lines() if line.startswith("data: ")]
+    session_id = json.loads(lines[0][6:])["session_id"]
+    paused = next(json.loads(x[6:]) for x in lines if '"needs_input"' in x)
+    assert paused["review"]["reason"] == "requested"
+
+    done = dict(resume(client, session_id, {}))  # approve as proposed: no re-plan
+    assert done["result"]["status"] == "answered"
+    assert len([r for r in fake.requests if r.task == "plan"]) == 1
+    client.delete(f"/api/chat/sessions/{session_id}")
+
+
+def test_a_new_question_replaces_a_paused_plan(hitl_api) -> None:  # type: ignore[no-untyped-def]
+    client, fake = hitl_api
+    login(client, RAM)
+    script_turn(fake, "ZENOVAX units by account")
+    fake.queues["plan"] = [AMBIGUOUS]
+    session_id = stream(client, "zenovax units by account")[0][1]["session_id"]
+    script_turn(fake, "Units by drug?")
+    assert dict(stream(client, "units by drug?", session_id))["result"]["status"] == "answered"
+    with client.stream("POST", f"/api/chat/sessions/{session_id}/resume", json={}) as resp:
+        assert resp.status_code == 409
+    # the abandoned plan isn't a turn: follow-ups see only the answered question
+    user_id = client.get("/api/auth/me").json()["user_id"]
+    repo = client.app.state.chat._repo  # type: ignore[attr-defined]
+    history = client.portal.call(repo.history, user_id, session_id)  # type: ignore[union-attr]
+    assert [t.question for t in history] == ["units by drug?"]
+    client.delete(f"/api/chat/sessions/{session_id}")

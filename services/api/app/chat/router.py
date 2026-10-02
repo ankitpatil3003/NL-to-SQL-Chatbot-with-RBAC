@@ -14,7 +14,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.auth.deps import CurrentUser
 from app.chat.repository import ChatRepository
-from app.chat.service import BudgetExceeded, ChatService, SessionNotFound, TurnInProgress
+from app.chat.service import (
+    BudgetExceeded,
+    ChatService,
+    NothingToResume,
+    SessionNotFound,
+    TurnInProgress,
+)
 from app.core.config import Settings, get_settings
 from app.db.executor import QueryExecutor, QueryFailed
 from app.nl2sql.answer import jsonable
@@ -45,6 +51,21 @@ class SessionDetail(SessionOut):
     messages: list[MessageOut]
 
 
+class ResumeIn(BaseModel):
+    """The user's response to a paused turn's plan: choices for its open questions and/or a
+    correction. Neither = run the plan as proposed."""
+
+    answers: dict[str, str] = Field(default_factory=dict, max_length=10)
+    feedback: str = Field("", max_length=MAX_MESSAGE_CHARS)
+
+    @field_validator("answers")
+    @classmethod
+    def bounded(cls, v: dict[str, str]) -> dict[str, str]:
+        if any(len(k) > 500 or len(a) > 500 for k, a in v.items()):
+            raise ValueError("answer too long")
+        return v
+
+
 class RenameIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
 
@@ -52,6 +73,7 @@ class RenameIn(BaseModel):
 class TurnIn(BaseModel):
     session_id: UUID | None = None  # omit to start a new chat
     message: str = Field(max_length=MAX_MESSAGE_CHARS)
+    review: bool = False  # show the analysis plan for approval before running it
 
     @field_validator("message")
     @classmethod
@@ -214,17 +236,39 @@ def _sse(event: dict[str, Any]) -> str:
 @router.post("/stream")
 async def stream_turn(body: TurnIn, request: Request, user: CurrentUser) -> StreamingResponse:
     """Server-sent events: session -> stage* -> answer_delta -> result -> title? -> done
-    (or error). Omitting session_id starts a new chat."""
+    (or error). Omitting session_id starts a new chat. A result with status "needs_input" means
+    the turn paused for plan review: answer it with POST /sessions/{id}/resume."""
+    events = _service(request).stream_turn(
+        user, str(body.session_id) if body.session_id else None, body.message, review=body.review
+    )
+    return await _sse_response(events)
+
+
+@router.post("/sessions/{session_id}/resume")
+async def resume_turn(
+    session_id: UUID, body: ResumeIn, request: Request, user: CurrentUser
+) -> StreamingResponse:
+    """Continue the chat's paused turn with the user's plan review; streams like /stream."""
+    events = _service(request).resume_turn(user, str(session_id), body.model_dump())
+    return await _sse_response(events)
+
+
+def _service(request: Request) -> ChatService:
     service: ChatService | None = getattr(request.app.state, "chat", None)
     if service is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The assistant isn't configured")
-    events = service.stream_turn(
-        user, str(body.session_id) if body.session_id else None, body.message
-    )
+    return service
+
+
+async def _sse_response(events: AsyncIterator[dict[str, Any]]) -> StreamingResponse:
     try:
         first = await anext(events)  # surfaces ownership / concurrency errors as HTTP status codes
     except SessionNotFound:
         raise _not_found() from None
+    except NothingToResume:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This plan was already answered or replaced"
+        ) from None
     except BudgetExceeded:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,

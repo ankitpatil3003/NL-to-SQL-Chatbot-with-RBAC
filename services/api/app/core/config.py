@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     llm_chain_rewrite: str | None = None
     llm_chain_answer: str | None = None
     llm_chain_title: str | None = None
+    llm_chain_plan: str | None = None
     llm_timeout_s: float = 60.0
     openrouter_api_key: str | None = None
     anthropic_api_key: str | None = None
@@ -80,6 +81,7 @@ class Settings(BaseSettings):
             "rewrite": self.llm_chain_rewrite,
             "answer": self.llm_chain_answer,
             "title": self.llm_chain_title,
+            "plan": self.llm_chain_plan,
         }
         return {task: chain for task, chain in overrides.items() if chain}
 

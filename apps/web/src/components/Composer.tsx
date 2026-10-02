@@ -11,11 +11,15 @@ export default function Composer({
   onStop,
   busy,
   autoFocus,
+  reviewPlans,
+  onReviewPlans,
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
   autoFocus?: boolean;
+  reviewPlans: boolean;
+  onReviewPlans: (on: boolean) => void;
 }) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -53,8 +57,22 @@ export default function Composer({
         className="block w-full resize-none bg-transparent px-1 py-1.5 outline-none placeholder:text-fg-muted"
       />
       <div className="flex items-center justify-between pt-1">
-        <span className="text-xs text-fg-muted">
-          {text.length > MAX_CHARS * 0.8 ? `${text.length}/${MAX_CHARS}` : "Enter to send · Shift+Enter for a new line"}
+        <span className="flex items-center gap-3 text-xs text-fg-muted">
+          <label
+            className="flex cursor-pointer items-center gap-1.5"
+            title="Show the analysis plan for approval before any query runs"
+          >
+            <input
+              type="checkbox"
+              checked={reviewPlans}
+              onChange={(e) => onReviewPlans(e.target.checked)}
+              className="accent-accent"
+            />
+            Review plan first
+          </label>
+          <span className="hidden sm:inline">
+            {text.length > MAX_CHARS * 0.8 ? `${text.length}/${MAX_CHARS}` : "Enter to send · Shift+Enter for a new line"}
+          </span>
         </span>
         {busy ? (
           <button

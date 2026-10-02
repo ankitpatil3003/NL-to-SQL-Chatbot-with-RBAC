@@ -104,14 +104,19 @@ class ChatRepository:
         return payload if isinstance(payload, dict) else None
 
     async def history(self, user_id: str, session_id: str) -> list[HistoryTurn]:
-        """Last completed turns as (question, answer, sql) for follow-up understanding."""
+        """Last completed turns as (question, answer, sql) for follow-up understanding. A paused
+        turn's plan and the user's reply to it aren't a turn of their own: the question pairs
+        with the answer that finally came."""
         turns: list[HistoryTurn] = []
         pending: str | None = None
         for m in await self.messages(user_id, session_id):
+            payload = m.payload or {}
+            if payload.get("resume") or payload.get("status") == "needs_input":
+                continue
             if m.role == "user":
                 pending = m.content
             elif pending is not None:
-                sql = (m.payload or {}).get("sql")
+                sql = payload.get("sql")
                 turns.append(HistoryTurn(pending, m.content, sql))
                 pending = None
         return turns[-HISTORY_TURNS:]

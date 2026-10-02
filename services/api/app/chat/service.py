@@ -8,12 +8,12 @@ answer is saved, so reopening the chat shows it.
 import asyncio
 import dataclasses
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from app.chat.repository import ChatRepository
 from app.nl2sql.pipeline import Pipeline
-from app.nl2sql.types import TurnResult
+from app.nl2sql.types import Event, HistoryTurn, TurnResult
 from app.rbac.context import UserContext
 
 log = logging.getLogger(__name__)
@@ -27,6 +27,10 @@ class SessionNotFound(Exception):
 
 class TurnInProgress(Exception):
     """The user already has a question being answered (one at a time per user)."""
+
+
+class NothingToResume(Exception):
+    """The chat has no paused turn (already answered, or a newer question replaced it)."""
 
 
 class BudgetExceeded(Exception):
@@ -53,7 +57,17 @@ def result_payload(result: TurnResult) -> dict[str, Any]:
         "rules_applied": result.rules_applied,
         "notes": result.notes,
         "trace_id": result.trace_id,
+        "plan": result.plan,
+        "review": result.review,
     }
+
+
+def describe_resume(response: dict[str, Any]) -> str:
+    """The user's side of a plan review, as the chat shows it."""
+    parts = [f"{q}: {a}" for q, a in (response.get("answers") or {}).items()]
+    if response.get("feedback"):
+        parts.append(str(response["feedback"]))
+    return "; ".join(parts) if parts else "Run this plan"
 
 
 def fallback_title(question: str) -> str:
@@ -78,22 +92,59 @@ class ChatService:
         self._tasks: set[asyncio.Task[None]] = set()  # strong refs: running turns aren't GC'd
 
     async def stream_turn(
-        self, user: UserContext, session_id: str | None, message: str
+        self, user: UserContext, session_id: str | None, message: str, *, review: bool = False
     ) -> AsyncIterator[dict[str, Any]]:
+        await self._admit(user)
+        if session_id is None:
+            session_id = await self._repo.create_session(user.user_id)
+        elif await self._repo.get_session(user.user_id, session_id) is None:
+            raise SessionNotFound
+        sid = session_id
+
+        def events(history: list[HistoryTurn]) -> AsyncIterator[Event]:
+            return self._pipeline.run(message, history, user, session_id=sid, review=review)
+
+        async for item in self._stream(user, sid, message, None, events):
+            yield item
+
+    async def resume_turn(
+        self, user: UserContext, session_id: str, response: dict[str, Any]
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Answer a paused turn's plan review; the graph continues from its checkpoint."""
+        await self._admit(user)
+        if await self._repo.get_session(user.user_id, session_id) is None:
+            raise SessionNotFound
+        if await self._pipeline.pending_review(session_id) is None:
+            raise NothingToResume
+
+        def events(_: list[HistoryTurn]) -> AsyncIterator[Event]:
+            return self._pipeline.resume(response, user, session_id=session_id)
+
+        text = describe_resume(response)
+        async for item in self._stream(user, session_id, text, {"resume": True}, events):
+            yield item
+
+    async def _admit(self, user: UserContext) -> None:
         if user.user_id in self._active:
             raise TurnInProgress
         # Summed from turn traces, not memory: survives restarts and multiple API tasks, and
         # deleting chats can't reset it (traces outlive their chats).
         if self._budget and await self._repo.spend_last_day(user.user_id) >= self._budget:
             raise BudgetExceeded(self._budget)
-        if session_id is None:
-            session_id = await self._repo.create_session(user.user_id)
-        elif await self._repo.get_session(user.user_id, session_id) is None:
-            raise SessionNotFound
 
+    async def _stream(
+        self,
+        user: UserContext,
+        session_id: str,
+        message: str,
+        message_payload: dict[str, Any] | None,
+        events: Callable[[list[HistoryTurn]], AsyncIterator[Event]],
+    ) -> AsyncIterator[dict[str, Any]]:
         self._active.add(user.user_id)
         queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
-        task = asyncio.create_task(self._run(user, session_id, message, queue))
+        task = asyncio.create_task(
+            self._run(user, session_id, message, message_payload, events, queue)
+        )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -113,13 +164,15 @@ class ChatService:
         user: UserContext,
         session_id: str,
         message: str,
+        message_payload: dict[str, Any] | None,
+        events: Callable[[list[HistoryTurn]], AsyncIterator[Event]],
         queue: asyncio.Queue[dict[str, Any] | None],
     ) -> None:
         try:
             history = await self._repo.history(user.user_id, session_id)
-            await self._repo.add_message(session_id, "user", message)
+            await self._repo.add_message(session_id, "user", message, message_payload)
             result: TurnResult | None = None
-            async for event in self._pipeline.run(message, history, user, session_id=session_id):
+            async for event in events(history):
                 if event.type == "stage":
                     await queue.put({"event": "stage", "data": {"name": event.data}})
                 elif event.type == "answer_delta":

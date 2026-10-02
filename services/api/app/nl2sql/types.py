@@ -30,6 +30,29 @@ class Understanding(BaseModel):
     title: str
 
 
+class PlanQuestion(BaseModel):
+    """A choice that would change the numbers. options[0] is what the plan assumes by default."""
+
+    model_config = ConfigDict(extra="forbid")
+    question: str
+    options: list[str]
+
+
+class AnalysisPlan(BaseModel):
+    """Plan-then-generate: what will be computed, in business language, before any SQL. It is
+    what a human reviews when the turn pauses, and what the SQL step must follow."""
+
+    model_config = ConfigDict(extra="forbid")
+    summary: str  # one sentence: "Paid demand units of ZENOVAX by territory, Jun-Aug 2026"
+    metric: str
+    filters: list[str]
+    breakdown: str
+    time_window: str
+    rules: list[str]  # business rule ids the computation follows
+    open_questions: list[PlanQuestion]  # only genuine ambiguities; usually empty
+    confidence: Literal["high", "medium", "low"]
+
+
 class SqlDraft(BaseModel):
     """Stage 2: the generated query plus what the model assumed."""
 
@@ -53,7 +76,8 @@ class HistoryTurn:
 
 # --- Pipeline results and events ---------------------------------------------------------------
 
-TurnStatus = Literal["answered", "clarification", "refused", "error"]
+# needs_input: the turn paused for the user (plan review); the chat resumes it.
+TurnStatus = Literal["answered", "clarification", "refused", "error", "needs_input"]
 
 
 @dataclass(slots=True)
@@ -77,6 +101,8 @@ class TurnResult:
     notes: list[str] = field(default_factory=list)  # e.g. scope limits, dollars not available
     trace_id: str | None = None
     title: str | None = None  # suggested chat title (from query understanding)
+    plan: dict[str, Any] | None = None  # the AnalysisPlan the answer followed
+    review: dict[str, Any] | None = None  # what the user is asked, when status == needs_input
 
 
 @dataclass(frozen=True, slots=True)

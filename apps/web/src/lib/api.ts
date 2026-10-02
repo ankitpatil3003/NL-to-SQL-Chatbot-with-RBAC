@@ -37,7 +37,31 @@ export interface ResultTable {
   row_count: number; // every row the query returns
 }
 
-export type TurnStatus = "answered" | "clarification" | "refused" | "error";
+// needs_input: the turn paused for the user to review its analysis plan (resume it to continue).
+export type TurnStatus = "answered" | "clarification" | "refused" | "error" | "needs_input";
+
+export interface AnalysisPlan {
+  summary: string;
+  metric: string;
+  filters: string[];
+  breakdown: string;
+  time_window: string;
+  rules: string[];
+  open_questions: { question: string; options: string[] }[]; // options[0] = the plan's default
+  confidence: "high" | "medium" | "low";
+}
+
+export interface PlanReview {
+  kind: "plan_review";
+  reason: "ambiguous" | "requested";
+  plan: AnalysisPlan;
+}
+
+/** The user's response to a plan review. Empty = run the plan as proposed. */
+export interface ReviewResponse {
+  answers?: Record<string, string>;
+  feedback?: string;
+}
 
 export interface AssistantPayload {
   status: TurnStatus;
@@ -48,6 +72,8 @@ export interface AssistantPayload {
   rules_applied: string[];
   notes: string[];
   trace_id: string | null;
+  plan?: AnalysisPlan | null; // what the answer computed
+  review?: PlanReview | null; // when status is needs_input
 }
 
 export interface ChatMessage {
@@ -121,17 +147,33 @@ export type StreamEvent =
   | { event: "done"; data: Record<string, never> }
   | { event: "error"; data: { message: string } };
 
-/** POST a question and yield server-sent events as they arrive. (EventSource can't POST.) */
-export async function* streamTurn(
+/** POST a question and yield server-sent events as they arrive. (EventSource can't POST.)
+ * `review`: pause for the user to approve the analysis plan before it runs. */
+export function streamTurn(
   message: string,
   sessionId: string | null,
   signal?: AbortSignal,
+  review = false,
 ): AsyncGenerator<StreamEvent> {
-  const res = await fetch("/api/chat/stream", {
+  const body = { message, review, ...(sessionId ? { session_id: sessionId } : {}) };
+  return streamPost("/api/chat/stream", body, signal);
+}
+
+/** Answer a paused turn's plan review; the turn continues and streams like streamTurn. */
+export function streamResume(
+  sessionId: string,
+  response: ReviewResponse,
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  return streamPost(`/api/chat/sessions/${sessionId}/resume`, response, signal);
+}
+
+async function* streamPost(path: string, body: object, signal?: AbortSignal): AsyncGenerator<StreamEvent> {
+  const res = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify(sessionId ? { message, session_id: sessionId } : { message }),
+    body: JSON.stringify(body),
     signal,
   });
   if (!res.ok || !res.body) {

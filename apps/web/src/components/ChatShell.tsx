@@ -7,7 +7,16 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { ApiError, api, type Me, type SessionSummary, streamTurn } from "@/lib/api";
+import {
+  ApiError,
+  api,
+  type Me,
+  type ReviewResponse,
+  type SessionSummary,
+  type StreamEvent,
+  streamResume,
+  streamTurn,
+} from "@/lib/api";
 
 import Composer from "./Composer";
 import { SidebarIcon } from "./icons";
@@ -44,6 +53,8 @@ const subscribeDesktop = (onChange: () => void) => {
 };
 const isDesktopNow = () => window.matchMedia(DESKTOP).matches;
 
+const REVIEW_KEY = "reviewPlans"; // per-browser preference: show every plan before it runs
+
 const sessionIdFrom = (path: string) => path.match(/^\/chat\/([0-9a-f-]{36})/)?.[1] ?? null;
 let keySeq = 0;
 const newKey = () => `m${++keySeq}`;
@@ -61,6 +72,23 @@ export default function ChatShell() {
   const activeId = urlSessionId;
   const messages = thread.id === activeId ? thread.messages : [];
   const [busy, setBusy] = useState(false);
+  // Read once on mount. The composer only renders after /me loads on the client, so the server
+  // render (no storage) never has to agree with it.
+  const [reviewPlans, setReviewPlans] = useState(() => {
+    try {
+      return typeof window !== "undefined" && localStorage.getItem(REVIEW_KEY) === "1";
+    } catch {
+      return false; // storage unavailable: default off
+    }
+  });
+  const toggleReviewPlans = (on: boolean) => {
+    setReviewPlans(on);
+    try {
+      localStorage.setItem(REVIEW_KEY, on ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
   const isDesktop = useSyncExternalStore(subscribeDesktop, isDesktopNow, () => true);
   const [sidebarPref, setSidebarPref] = useState<boolean | null>(null); // null = follow screen size
   const sidebarOpen = sidebarPref ?? isDesktop;
@@ -113,7 +141,13 @@ export default function ChatShell() {
   const patchLast = (patch: Partial<UiMessage>) =>
     setThread((t) => ({ ...t, messages: t.messages.map((m, i) => (i === t.messages.length - 1 ? { ...m, ...patch } : m)) }));
 
-  const send = async (text: string) => {
+  const send = (text: string) => runTurn(text, (signal) => streamTurn(text, activeId, signal, reviewPlans));
+  const respond = (response: ReviewResponse, label: string) => {
+    if (activeId) runTurn(label, (signal) => streamResume(activeId, response, signal));
+  };
+
+  /** Shows the user's message and streams the assistant's reply into the chat. */
+  const runTurn = async (text: string, start: (signal: AbortSignal) => AsyncGenerator<StreamEvent>) => {
     if (busy) return;
     setBusy(true);
     const controller = new AbortController();
@@ -128,7 +162,7 @@ export default function ChatShell() {
       ],
     }));
     try {
-      for await (const ev of streamTurn(text, activeId, controller.signal)) {
+      for await (const ev of start(controller.signal)) {
         if (ev.event === "session") {
           if (!activeId) {
             streamingSessionRef.current = ev.data.session_id;
@@ -151,7 +185,9 @@ export default function ChatShell() {
         const msg =
           e instanceof ApiError && e.status === 429
             ? e.message // "A question is already being answered" or the daily budget
-            : e instanceof ApiError && e.status === 503
+            : e instanceof ApiError && e.status === 409
+              ? "That plan was already answered or replaced by a newer question."
+              : e instanceof ApiError && e.status === 503
               ? "The assistant isn't configured on the server."
               : e instanceof ApiError && e.status === 401
                 ? "Your session has expired. Please sign in again."
@@ -251,8 +287,12 @@ export default function ChatShell() {
               </div>
             ) : (
               <div className="space-y-6 pt-4">
-                {messages.map((m) => (
-                  <Message key={m.key} message={m} />
+                {messages.map((m, i) => (
+                  <Message
+                    key={m.key}
+                    message={m}
+                    onRespond={i === messages.length - 1 && !busy ? respond : undefined}
+                  />
                 ))}
                 <div ref={bottomRef} />
               </div>
@@ -261,7 +301,14 @@ export default function ChatShell() {
         </div>
 
         <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
-          <Composer onSend={send} onStop={() => abortRef.current?.abort()} busy={busy} autoFocus />
+          <Composer
+            onSend={send}
+            onStop={() => abortRef.current?.abort()}
+            busy={busy}
+            autoFocus
+            reviewPlans={reviewPlans}
+            onReviewPlans={toggleReviewPlans}
+          />
           <p className="mt-2 text-center text-xs text-fg-muted">
             Answers are generated from NovaPharma data and can contain mistakes. Check the SQL for important decisions.
           </p>

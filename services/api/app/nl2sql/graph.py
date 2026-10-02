@@ -1,9 +1,14 @@
 """The NL-to-SQL turn as a LangGraph state graph (CLAUDE.md §4.2, v2):
 
   understand ─┬─ not a data question ─▶ reply
-              └─▶ retrieve ─▶ sql ─┬─ unanswerable ─▶ explain
-                                   ├─ attempts spent ─▶ fail
-                                   └─ result ────────▶ answer
+              └─▶ retrieve ─▶ plan ─▶ review ─┬─ feedback ─▶ plan (revise)
+                                              └─▶ sql ─┬─ unanswerable ─▶ explain
+                                                       ├─ attempts spent ─▶ fail
+                                                       └─ result ────────▶ answer
+
+Human in the loop: `review` pauses the turn (LangGraph interrupt) when the plan has a genuine
+ambiguity, or when the user asked to review every plan. The chat shows the plan and resumes the
+graph with the user's choice or correction. Clear questions run straight through.
 
 The state is checkpointed per chat, so a turn can pause for the user and resume later. What must
 never be checkpointed travels in the per-run context instead: who the user is (re-resolved from
@@ -19,7 +24,7 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
-from langgraph.types import Checkpointer
+from langgraph.types import Checkpointer, interrupt
 
 from app.db.executor import QueryExecutor, QueryFailed
 from app.knowledge.base import KnowledgeBase
@@ -29,7 +34,9 @@ from app.llm.router import LLMRouter
 from app.nl2sql.answer import build_notes, plain_language, result_table, synthesize
 from app.nl2sql.entities import Resolution, resolve_mentions
 from app.nl2sql.generate import build_context, generate_and_run, redact_wac_sql
+from app.nl2sql.plan import make_plan, read_response, render_plan
 from app.nl2sql.types import (
+    AnalysisPlan,
     Event,
     HistoryTurn,
     ResultTable,
@@ -47,6 +54,8 @@ log = logging.getLogger(__name__)
 DOC_CHUNKS = 3
 EXAMPLES = 4
 
+MAX_REVIEWS = 2  # rounds of human review per turn; then the latest plan runs
+
 FAILED = (
     "I couldn't build a working query for that question. Try rephrasing it, or be more "
     "specific about the product, time period or accounts you mean."
@@ -55,7 +64,16 @@ FAILED = (
 # Types the checkpointer may rebuild from a stored checkpoint (anything else is refused).
 CHECKPOINT_TYPES = [
     ("app.nl2sql.types", name)
-    for name in ("HistoryTurn", "Understanding", "Mention", "SqlDraft", "ResultTable", "TurnResult")
+    for name in (
+        "HistoryTurn",
+        "Understanding",
+        "Mention",
+        "AnalysisPlan",
+        "PlanQuestion",
+        "SqlDraft",
+        "ResultTable",
+        "TurnResult",
+    )
 ] + [
     ("app.knowledge.store", "Hit"),
     ("app.knowledge.fewshots", "SelectedExample"),
@@ -75,6 +93,8 @@ class TurnDeps:
     kb: KnowledgeBase
     executor: QueryExecutor
     max_rows: int
+    hitl: bool = False  # may pause for the user (needs a checkpointer; never in evals or the CLI)
+    always_review: bool = False  # the user asked to see every plan before it runs
 
 
 class TurnState(TypedDict, total=False):
@@ -84,6 +104,12 @@ class TurnState(TypedDict, total=False):
     docs: list[Hit]
     examples: list[SelectedExample]
     resolutions: list[Resolution]
+    plan: AnalysisPlan | None
+    feedback: list[str]  # the reviewer's choices and corrections, in order
+    reviews: int
+    reviewed: bool  # a human approved the plan that runs
+    corrected: bool  # the last review typed a correction (so the revision is shown again)
+    replan: bool
     draft: SqlDraft | None
     guarded: GuardedQuery | None
     table: ResultTable | None
@@ -99,6 +125,12 @@ def new_turn(question: str, history: list[HistoryTurn]) -> TurnState:
         docs=[],
         examples=[],
         resolutions=[],
+        plan=None,
+        feedback=[],
+        reviews=0,
+        reviewed=False,
+        corrected=False,
+        replan=False,
         draft=None,
         guarded=None,
         table=None,
@@ -158,17 +190,55 @@ async def retrieve_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
     return {"docs": docs, "examples": examples, "resolutions": resolutions}
 
 
-async def sql_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
-    deps, intent, history = runtime.context, state["understanding"], state["history"]
-    _emit("stage", "writing_sql")
-    context = build_context(
-        _standalone(state),
-        docs=state["docs"],
-        examples=state["examples"],
-        resolutions=state["resolutions"],
-        previous=history[-1] if intent.is_follow_up and history else None,
-        volume_instead_of_dollars=intent.asks_for_dollars and not deps.user.can_view_wac,
+async def plan_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
+    deps = runtime.context
+    _emit("stage", "planning")
+    with deps.trace.stage("plan"):
+        plan, routed = await make_plan(
+            deps.llm, deps.kb, deps.user, _context(state, deps), state["feedback"]
+        )
+    deps.trace.add_llm("plan", routed)
+    deps.trace.detail.setdefault("plans", []).append(plan.model_dump())
+    return {"plan": plan, "replan": False}
+
+
+async def review_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
+    deps, plan = runtime.context, state["plan"]
+    assert plan is not None
+    wanted = deps.always_review or bool(plan.open_questions)
+    # After a review, ask again only to show a plan the user corrected in their own words;
+    # answered choices are settled.
+    settled = state["reviews"] > 0 and not state["corrected"]
+    if not (deps.hitl and wanted) or settled or state["reviews"] >= MAX_REVIEWS:
+        return {"replan": False}
+    # Pauses the turn; the checkpoint keeps the state. On resume this node runs again from the top
+    # and interrupt() returns the user's response (so nothing above it may have side effects).
+    response = interrupt(
+        {
+            "kind": "plan_review",
+            "reason": "ambiguous" if plan.open_questions else "requested",
+            "plan": plan.model_dump(),
+        }
     )
+    review = read_response(plan, response if isinstance(response, dict) else {})
+    deps.trace.detail.setdefault("reviews", []).append(
+        {"plan": plan.summary, "feedback": review.feedback, "changed": review.changed}
+    )
+    return {
+        "reviews": state["reviews"] + 1,
+        "reviewed": True,
+        "corrected": review.corrected,
+        "feedback": state["feedback"] + review.feedback,
+        "replan": review.changed,
+    }
+
+
+async def sql_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
+    deps, plan = runtime.context, state["plan"]
+    _emit("stage", "writing_sql")
+    context = _context(state, deps)
+    if plan is not None:
+        context += "\n\n" + render_plan(plan, reviewed=state["reviewed"])
     with deps.trace.stage("sql"):
         outcome = await generate_and_run(
             deps.llm, deps.kb, deps.executor, deps.user, context, max_rows=deps.max_rows
@@ -251,6 +321,7 @@ async def answer_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
             assumptions=[plain_language(a) for a in draft.assumptions],
             rules_applied=draft.rules_applied,
             notes=notes,
+            plan=state["plan"].model_dump() if state["plan"] else None,
         )
     )
 
@@ -260,6 +331,10 @@ async def answer_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
 
 def after_understand(state: TurnState) -> str:
     return "retrieve" if state["understanding"].intent == "data_question" else "reply"
+
+
+def after_review(state: TurnState) -> str:
+    return "plan" if state["replan"] else "sql"
 
 
 def after_sql(state: TurnState) -> str:
@@ -274,13 +349,17 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph[Any, An
     g.add_node("understand", understand_node)
     g.add_node("reply", reply_node)
     g.add_node("retrieve", retrieve_node)
+    g.add_node("plan", plan_node)
+    g.add_node("review", review_node)
     g.add_node("sql", sql_node)
     g.add_node("explain", explain_node)
     g.add_node("fail", fail_node)
     g.add_node("answer", answer_node)
     g.add_edge(START, "understand")
     g.add_conditional_edges("understand", after_understand, ["retrieve", "reply"])
-    g.add_edge("retrieve", "sql")
+    g.add_edge("retrieve", "plan")
+    g.add_edge("plan", "review")
+    g.add_conditional_edges("review", after_review, ["plan", "sql"])
     g.add_conditional_edges("sql", after_sql, ["explain", "answer", "fail"])
     for end in ("reply", "explain", "fail", "answer"):
         g.add_edge(end, END)
@@ -288,6 +367,18 @@ def build_graph(checkpointer: Checkpointer = None) -> CompiledStateGraph[Any, An
 
 
 # --- Helpers ---------------------------------------------------------------------------------
+
+
+def _context(state: TurnState, deps: TurnDeps) -> str:
+    intent, history = state["understanding"], state["history"]
+    return build_context(
+        _standalone(state),
+        docs=state["docs"],
+        examples=state["examples"],
+        resolutions=state["resolutions"],
+        previous=history[-1] if intent.is_follow_up and history else None,
+        volume_instead_of_dollars=intent.asks_for_dollars and not deps.user.can_view_wac,
+    )
 
 
 def _standalone(state: TurnState) -> str:

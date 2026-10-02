@@ -72,6 +72,7 @@ async def test_full_data_turn_streams_events_and_persists_a_trace(env) -> None: 
     assert [e.data for e in events if e.type == "stage"] == [
         "understanding",
         "retrieving",
+        "planning",
         "writing_sql",
         "answering",
     ]
@@ -83,7 +84,7 @@ async def test_full_data_turn_streams_events_and_persists_a_trace(env) -> None: 
     assert row["status"] == "answered" and row["row_count"] == result.table.row_count
     assert row["prompt_version"] == pipeline.prompt_version and row["sql_executed"] == result.sql
     detail = row["detail"]
-    assert [c["task"] for c in detail["llm_calls"]] == ["router", "sql", "answer"]  # type: ignore[index]
+    assert [c["task"] for c in detail["llm_calls"]] == ["router", "plan", "sql", "answer"]  # type: ignore[index]
     assert detail["retrieval"]["docs"] and detail["retrieval"]["examples"]  # type: ignore[index]
     assert detail["entities"] == ["- \"zenovax\" (drug) -> drug_name = 'ZENOVAX'"]  # type: ignore[index]
 

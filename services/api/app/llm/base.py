@@ -37,7 +37,7 @@ class Message:
 
 @dataclass(frozen=True, slots=True)
 class LLMRequest:
-    task: str  # routing key: "sql", "router", "rewrite", "answer", "title"
+    task: str  # routing key: "sql", "router", "rewrite", "answer", "title", "plan"
     system: list[SystemBlock]
     messages: list[Message]
     max_tokens: int = 4096

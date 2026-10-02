@@ -9,6 +9,16 @@ from pydantic import BaseModel
 
 from app.llm.base import LLMRequest, LLMResponse, Usage
 from app.llm.router import LLMRouter, Target
+from app.nl2sql.types import AnalysisPlan
+
+# Most questions have a plain plan with nothing to ask, so a test that doesn't script the plan
+# step gets this one (and the turn runs straight through, as in production). HITL tests script
+# plans with open questions explicitly.
+CLEAR_PLAN = AnalysisPlan(
+    summary="Paid demand units by drug.", metric="Paid demand units", filters=[],
+    breakdown="by drug", time_window="all available months", rules=["DS-1"],
+    open_questions=[], confidence="high",
+)  # fmt: skip
 
 
 class ScriptedProvider:
@@ -23,6 +33,8 @@ class ScriptedProvider:
 
     async def complete(self, model: str, request: LLMRequest) -> LLMResponse:
         self.requests.append(request)
+        if not self.queues[request.task] and request.task == "plan":
+            self.queues["plan"].append(CLEAR_PLAN)
         if not self.queues[request.task]:
             raise AssertionError(f"no scripted response left for task {request.task!r}")
         item = self.queues[request.task].pop(0)
