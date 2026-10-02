@@ -67,3 +67,14 @@ def test_plain_language_replaces_raw_column_names() -> None:
         == "totaled **37,021 units** by month"
     )
     assert plain_language("xpack_units stays") == "xpack_units stays"  # whole words only
+
+
+def test_model_text_users_cannot_read_is_dropped() -> None:
+    from app.nl2sql.answer import readable
+
+    lines = [
+        "Used the last 3 months of pack_units.",
+        "使用了最近三个月的数据。",
+        "Accounts at system level.",
+    ]
+    assert readable(lines) == ["Used the last 3 months of units.", "Accounts at system level."]

@@ -6,3 +6,5 @@ Return JSON with:
 - rules_applied: ids of the business rules you applied.
 - assumptions: short statements of each interpretation you made (time window chosen, level of aggregation, how an ambiguous term was read). They are shown to business users, so write them in business language: name periods as months or quarters ("the last 12 months, Oct 2025 - Sep 2026"), never column, table or offset names (not "mo_offset 0-11", not "zip_territory.region_name"). Empty if none.
 - unanswerable_reason: when answerable is false, a short explanation addressed to the user ("you", never "the user"); otherwise "".
+
+Write every text field (assumptions, unanswerable_reason) in English, whatever language the examples or data contain.

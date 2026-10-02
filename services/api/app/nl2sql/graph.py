@@ -38,7 +38,7 @@ from app.knowledge.base import KnowledgeBase
 from app.knowledge.fewshots import SelectedExample, select_examples
 from app.knowledge.store import Hit
 from app.llm.router import LLMRouter
-from app.nl2sql.answer import build_notes, plain_language, result_table, synthesize
+from app.nl2sql.answer import build_notes, plain_language, readable, result_table, synthesize
 from app.nl2sql.consensus import CANDIDATE_SPECS, Candidate, reconcile
 from app.nl2sql.entities import Resolution, resolve_mentions
 from app.nl2sql.generate import SqlOutcome, build_context, generate_and_run, redact_wac_sql
@@ -385,7 +385,8 @@ async def explain_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
         asked_for_dollars=state["understanding"].asks_for_dollars,
         resolutions=state["resolutions"],
     )
-    answer = draft.unanswerable_reason or "That question can't be answered from this data."
+    reason = readable([draft.unanswerable_reason]) if draft.unanswerable_reason else []
+    answer = reason[0] if reason else "That question can't be answered from this data."
     return _finish(
         TurnResult(
             status="answered", answer=answer, standalone_question=_standalone(state), notes=notes
@@ -434,7 +435,7 @@ async def answer_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
             sql=guarded.sql,
             query=guarded.full_sql,
             table=table,
-            assumptions=[plain_language(a) for a in draft.assumptions],
+            assumptions=readable(draft.assumptions),
             rules_applied=draft.rules_applied,
             notes=notes,
             plan=state["plan"].model_dump() if state["plan"] else None,
@@ -549,7 +550,7 @@ def _option(c: Candidate) -> dict[str, Any]:
     assert c.table is not None
     assumptions = c.draft.assumptions if c.draft else []
     return {
-        "label": "; ".join(plain_language(a) for a in assumptions) or "Computed as planned",
+        "label": "; ".join(readable(assumptions)) or "Computed as planned",
         "columns": c.table.columns,
         "preview": c.table.rows[:3],
         "row_count": c.table.row_count,

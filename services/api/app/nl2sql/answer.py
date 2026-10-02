@@ -32,6 +32,16 @@ def plain_language(text: str) -> str:
     return _COLUMN_RE.sub(lambda m: COLUMN_WORDS[m.group(1)], text)
 
 
+# CJK scripts. Some models answer in Chinese despite English instructions (DeepSeek V3.2 does for
+# short prompts); a sentence users can't read is dropped rather than shown.
+_CJK_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]")
+
+
+def readable(texts: list[str]) -> list[str]:
+    """Model-written lines shown to users, in plain language, minus any not in English."""
+    return [plain_language(t) for t in texts if not _CJK_RE.search(t)]
+
+
 PROMPT_ROWS = 30  # rows shown to the answer model; the UI shows the full table
 UI_ROWS = 500
 
