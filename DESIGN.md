@@ -122,7 +122,8 @@ defaults).
 **Self-consistency, then verification.** The `sql` node generates 3 candidates concurrently:
 - the primary model greedy (temperature 0);
 - the same model sampled (0.7);
-- a second model family (`LLM_CHAIN_SQL_CROSS`). In production that is Sonnet ×2 + gpt-oss.
+- a second model family (`LLM_CHAIN_SQL_CROSS`). In production that is gpt-oss-120b ×2 +
+  DeepSeek V3.2, all on Bedrock (see "The chains in use" below).
 
 Each candidate runs through the guard and the scoped executor, and `reconcile` groups the results
 with the eval harness's own comparison (`nl2sql/compare.py`: order- and rounding-tolerant, extra
@@ -341,10 +342,22 @@ The chains in use:
 
 - **Local and dev default:** Nemotron (free), falling back to Claude Sonnet 5. Normal operation costs
   about $0.
-- **Production:** AWS credits first, then free, then paid. **OpenAI gpt-oss-120b on Amazon
-  Bedrock** runs every step; free Nemotron is the first fallback; the direct Anthropic API (Haiku
-  4.5, Sonnet 5 for SQL) is the last resort. The ECS task role signs Bedrock calls, so there is no
-  key. It was chosen by a second eval, with each candidate running the whole pipeline alone:
+- **Production (v2):** Bedrock only, on AWS credits, with no direct-API model in any chain.
+  - **Plan and two SQL candidates:** gpt-oss-120b.
+  - **Cross-family candidate:** DeepSeek V3.2. Each falls back to the other.
+  - **Other steps:** gpt-oss, with free Nemotron as the fallback.
+
+  Chosen by the v2 eval of the full pipeline with 3 candidates:
+
+  | v2 config | Accuracy | p50 | Cost / question |
+  |---|---|---|---|
+  | **gpt-oss-120b + DeepSeek V3.2** | **40/40** | 12.9 s | **$0.0066** |
+  | Kimi K2.5 + gpt-oss-120b | 39/40 | 8.8 s | $0.0111 |
+  | Sonnet 5 (direct API) + gpt-oss-120b | 38/40 | 12.8 s | $0.0277 |
+
+  The ECS task role signs Bedrock calls, so there is no key. Claude on Bedrock awaits AWS
+  approval; Haiku 4.5 there is the next cross candidate to evaluate. The v1 choice came from a
+  second eval, with each candidate running the whole pipeline alone:
 
   | Bedrock model | Accuracy | Security | p50 | Cost / 40 cases |
   |---|---|---|---|---|

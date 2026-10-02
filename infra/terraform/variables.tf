@@ -49,7 +49,7 @@ variable "web_memory" {
 # the small steps, Sonnet 5 for SQL) as the last resort.
 variable "llm_chain" {
   type    = string
-  default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-haiku-4-5"
+  default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free"
 }
 
 # Bedrock's model catalogue differs by region; us-east-1 has the widest set (gpt-oss-120b, and the
@@ -60,21 +60,23 @@ variable "bedrock_region" {
   default = "us-east-1"
 }
 
-# v2, accuracy first (user decision 2026-10-02): Sonnet writes the plan and two of the three SQL
-# candidates; gpt-oss writes the third as an independent model family. Each falls back if down.
+# v2 models, Bedrock only (user decision 2026-10-02, eval 20261002-172555: 40/40 at $0.0066 a
+# question vs Sonnet 5's 38/40 at $0.028): gpt-oss-120b writes the plan and two of the three SQL
+# candidates, DeepSeek V3.2 the third as an independent model family. All on AWS credits; no
+# direct-API model in any chain. Each falls back to the other if down.
 variable "llm_chain_sql" {
   type    = string
-  default = "anthropic:claude-sonnet-5,bedrock-converse:openai.gpt-oss-120b-1:0"
+  default = "bedrock-converse:openai.gpt-oss-120b-1:0,bedrock-converse:deepseek.v3.2"
 }
 
 variable "llm_chain_plan" {
   type    = string
-  default = "anthropic:claude-sonnet-5,bedrock-converse:openai.gpt-oss-120b-1:0"
+  default = "bedrock-converse:openai.gpt-oss-120b-1:0,bedrock-converse:deepseek.v3.2"
 }
 
 variable "llm_chain_sql_cross" {
   type    = string
-  default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free"
+  default = "bedrock-converse:deepseek.v3.2,bedrock-converse:openai.gpt-oss-120b-1:0"
 }
 
 variable "sql_candidates" {
