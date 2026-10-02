@@ -71,3 +71,16 @@ def test_verify_flags_share_from_one_aggregate_and_empty_results() -> None:
         "SELECT org_name FROM organizations WHERE org_name = 'x'", table(["org_name"], [])
     )
     assert [i.code for i in empty] == ["empty"] and empty[0].for_user == ""
+
+
+def test_a_total_question_answered_with_a_breakdown_is_flagged() -> None:
+    grouped = (
+        "SELECT period_mo, SUM(pack_units) FROM sales WHERE data_source = 'distributor' GROUP BY 1"
+    )
+    two_rows = table(["period_mo", "units"], [["2026-07", 1], ["2026-08", 2]])
+    for q in ["What are our total sales?", "How is Zenovax performing this quarter in pack units?"]:
+        assert [i.code for i in check(grouped, two_rows, q)] == ["unrequested_breakdown"]
+    for q in ["Total sales by territory", "How many accounts per GPO?", "Top 10 accounts by units",
+              "ZENOVAX units for the last 6 months"]:  # fmt: skip
+        assert check(grouped, two_rows, q) == []
+    assert check(grouped, table(["units"], [[3]]), "What are our total sales?") == []

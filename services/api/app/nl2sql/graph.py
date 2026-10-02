@@ -340,7 +340,8 @@ async def verify_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
     deps, guarded, table = runtime.context, state["guarded"], state["table"]
     assert guarded is not None and table is not None
     _emit("stage", "checking")
-    issues = check(guarded.full_sql, table)
+    question = _standalone(state)
+    issues = check(guarded.full_sql, table, question)
     deps.trace.detail["verify"] = [i.code for i in issues]
     if not issues:
         return {"issues": []}
@@ -360,7 +361,7 @@ async def verify_node(state: TurnState, runtime: Ctx) -> dict[str, Any]:
     if not repaired.succeeded:
         return {"issues": issues, "repaired": True}
     assert repaired.guarded is not None and repaired.table is not None
-    remaining = check(repaired.guarded.full_sql, repaired.table)
+    remaining = check(repaired.guarded.full_sql, repaired.table, question)
     deps.trace.detail["verify_after_repair"] = [i.code for i in remaining]
     _record_sql(deps, repaired)
     return {

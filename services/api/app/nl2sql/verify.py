@@ -2,6 +2,7 @@
 numbers without causing an error. Each issue is written for the model, so it can repair the query;
 an issue that survives the repair is shown to the user as a caveat."""
 
+import re
 from dataclasses import dataclass
 
 import sqlglot
@@ -18,8 +19,27 @@ class Issue:
     for_user: str  # the caveat shown if it survives the repair ("" = nothing to say)
 
 
-def check(sql: str, table: ResultTable) -> list[Issue]:
+# A question asking for one number, and words that ask for more than one row.
+_TOTAL = re.compile(r"\b(total|overall|how much|how many|sum of|performing|in total)\b", re.I)
+_BREAKDOWN = re.compile(
+    r"\b(by|per|each|every|trend|over time|monthly|weekly|quarterly|month over month|compare|"
+    r"comparison|versus|vs|rank|ranking|top|bottom|which|list|breakdown|split|across)\b",
+    re.I,
+)
+
+
+def check(sql: str, table: ResultTable, question: str = "") -> list[Issue]:
     issues: list[Issue] = []
+    if table.row_count > 1 and _TOTAL.search(question) and not _BREAKDOWN.search(question):
+        issues.append(
+            Issue(
+                "unrequested_breakdown",
+                "The question asks for a single total, but the query returns "
+                f"{table.row_count} rows (it groups by something the user didn't ask for). "
+                "Return one row with the requested measures, without GROUP BY.",
+                "",  # repaired before anyone sees it, or the breakdown is harmless context
+            )
+        )
     try:
         root = sqlglot.parse_one(sql, read=DIALECT)
     except sqlglot.errors.ParseError:
