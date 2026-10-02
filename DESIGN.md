@@ -17,6 +17,50 @@ reason and the evidence, so `git log` works as a decision log.
 
 ---
 
+## 0. Product assumptions
+
+The assumptions made while building the product. Wherever a choice was not given in the brief or
+`docs/`, it is stated here. These are different from the per-question interpretations the model
+reports under each answer.
+
+**Users and access**
+- The users are the 23 seeded people (2 Exec, 6 Director, 15 RAM). There is no sign-up, no SSO and
+  no user administration. A role or territory changes only through `public.users`.
+- Role and scope are read from `public.users` on every request, so a change takes effect at once.
+  Nothing is cached in the token.
+- `products` and `zip_territory` are reference data that every role may see (`docs/security_model.md`).
+- An out-of-scope request (another territory or region, or dollars for a non-Exec) is answered for
+  the user's own scope, with a note. It is not rejected outright.
+- One shared demo password exists so graders can switch roles. A real deployment would use
+  per-user credentials or SSO.
+
+**Data**
+- The data is a static snapshot anchored at 2026-09-19. "Now", "last month" and "R3M" are computed
+  from the offset columns, never from the clock. There is no incremental load or refresh schedule.
+- The five base tables load unchanged, and the grader's data must load without edits. Only indexes,
+  views and the `app` schema are added.
+- "Sales" means paid demand (distributor rows with `brand_flag = 1`). Free drug and market data are
+  included only when the user asks for them.
+- "Accounts" means the grandparent organisation, with standalone facilities counting as their own
+  account.
+- Market share follows the documented formula literally, even though this data puts it above 100%
+  (§2). Making that judgement is the business's job, not the assistant's.
+
+**Product behaviour**
+- Correctness matters more than speed. In pharma commercial reporting a wrong number costs more
+  than a slow one (see the v2 plan in `CLAUDE.md` §7, Phase 11).
+- Questions are in English, about this dataset only. Anything else is politely declined.
+- Every answer shows its result, its interpretation and (on request) its SQL. The user can audit an
+  answer without trusting the prose.
+- Users are commercial analysts, not SQL authors. Business terms are used throughout, and column
+  names never appear in answers.
+
+**Scale and operations**
+- Tens of concurrent users at most: one task per service, single-AZ, sized to a demo budget (§6).
+- Chats belong to their owner only. There is no sharing between users.
+
+---
+
 ## 1. Architecture
 
 ```
