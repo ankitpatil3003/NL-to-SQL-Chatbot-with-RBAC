@@ -65,9 +65,9 @@ variable "llm_chain_sql" {
   default = "bedrock-converse:openai.gpt-oss-120b-1:0,openrouter:nvidia/nemotron-3-super-120b-a12b:free,anthropic:claude-sonnet-5"
 }
 
-variable "chat_rate_limit_per_hour" {
+variable "chat_daily_budget_usd" {
   type    = number
-  default = 10 # user decision
+  default = 2 # user decision (v2): LLM spend per user per rolling 24h; replaced 10 questions/hour
 }
 
 variable "demo_password" {

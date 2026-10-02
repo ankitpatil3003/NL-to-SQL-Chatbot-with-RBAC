@@ -53,7 +53,9 @@ class Settings(BaseSettings):
     # credential chain: the ECS task role in production, a local profile otherwise.
     bedrock_region: str | None = None
     public_url: str = "http://localhost:3000"
-    chat_rate_limit_per_hour: int = 10  # questions per user per hour; 0 disables
+    # LLM spend per user over the last 24 hours (from turn traces); 0 disables. Replaced the
+    # hourly question limit once accuracy-first turns (several candidates) made cost per turn vary.
+    chat_daily_budget_usd: float = 2.0
 
     # --- Knowledge ---------------------------------------------------------------------------
     knowledge_docs_dir: Path = Field(default_factory=_repo_docs_dir)

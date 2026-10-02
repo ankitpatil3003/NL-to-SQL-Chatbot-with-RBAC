@@ -57,7 +57,7 @@ resource "aws_ecs_task_definition" "api" {
       { name = "LLM_CHAIN_SQL", value = var.llm_chain_sql },
       { name = "BEDROCK_REGION", value = var.bedrock_region },
       { name = "PUBLIC_URL", value = local.public_url },
-      { name = "CHAT_RATE_LIMIT_PER_HOUR", value = tostring(var.chat_rate_limit_per_hour) },
+      { name = "CHAT_DAILY_BUDGET_USD", value = tostring(var.chat_daily_budget_usd) },
       { name = "DEMO_SHOW_CREDENTIALS", value = "true" },
     ]
     secrets          = concat(local.app_secrets, local.llm_secrets)

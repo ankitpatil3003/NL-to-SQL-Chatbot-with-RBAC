@@ -29,10 +29,10 @@ class TurnInProgress(Exception):
     """The user already has a question being answered (one at a time per user)."""
 
 
-class RateLimited(Exception):
-    def __init__(self, limit: int) -> None:
-        super().__init__(f"rate limit {limit}/hour")
-        self.limit = limit
+class BudgetExceeded(Exception):
+    def __init__(self, budget_usd: float) -> None:
+        super().__init__(f"daily budget ${budget_usd:.2f} spent")
+        self.budget_usd = budget_usd
 
 
 # Idle SSE streams get cut by proxies: CloudFront drops a response when the origin is silent
@@ -66,12 +66,12 @@ class ChatService:
         repo: ChatRepository,
         pipeline: Pipeline,
         *,
-        rate_limit_per_hour: int = 0,
+        daily_budget_usd: float = 0,
         heartbeat_s: float = HEARTBEAT_S,
     ) -> None:
         self._repo = repo
         self._pipeline = pipeline
-        self._rate_limit = rate_limit_per_hour  # 0 = unlimited
+        self._budget = daily_budget_usd  # 0 = unlimited
         self._heartbeat_s = heartbeat_s
         self._active: set[str] = set()  # user ids with a turn in flight (per API instance)
         self._tasks: set[asyncio.Task[None]] = set()  # strong refs: running turns aren't GC'd
@@ -81,10 +81,10 @@ class ChatService:
     ) -> AsyncIterator[dict[str, Any]]:
         if user.user_id in self._active:
             raise TurnInProgress
-        # Counted from turn traces, not memory: survives restarts and multiple API tasks, and
+        # Summed from turn traces, not memory: survives restarts and multiple API tasks, and
         # deleting chats can't reset it (traces outlive their chats).
-        if self._rate_limit and await self._repo.turns_last_hour(user.user_id) >= self._rate_limit:
-            raise RateLimited(self._rate_limit)
+        if self._budget and await self._repo.spend_last_day(user.user_id) >= self._budget:
+            raise BudgetExceeded(self._budget)
         if session_id is None:
             session_id = await self._repo.create_session(user.user_id)
         elif await self._repo.get_session(user.user_id, session_id) is None:

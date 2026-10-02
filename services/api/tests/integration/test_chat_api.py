@@ -234,23 +234,34 @@ async def _service_env(settings: Settings, **kw: Any):  # type: ignore[no-untype
     return engine, executor, kb, llm, fake, repo, user
 
 
-async def test_hourly_rate_limit_counts_traces(settings: Settings) -> None:
-    from app.chat.service import RateLimited
+async def test_daily_budget_sums_trace_costs(settings: Settings) -> None:
+    from app.chat.service import BudgetExceeded
 
     engine, executor, kb, llm, fake, repo, user = await _service_env(settings)
-    already = await repo.turns_last_hour(user.user_id)
-    service = ChatService(
-        repo, Pipeline(llm, kb, executor, engine, max_rows=100), rate_limit_per_hour=already + 1
-    )
+    already = await repo.spend_last_day(user.user_id)
+    async with engine.begin() as conn:  # an earlier turn that cost $0.50
+        await conn.execute(
+            text(
+                "INSERT INTO app.turn_traces (user_id, status, question, cost_usd) "
+                "VALUES (:u, 'answered', 'budget test', 0.5)"
+            ),
+            {"u": user.user_id},
+        )
+    pipeline = Pipeline(llm, kb, executor, engine, max_rows=100)
     script_turn(fake, "Units by drug?")
+    service = ChatService(repo, pipeline, daily_budget_usd=already + 1.0)
     events = [e async for e in service.stream_turn(user, None, "units by drug?")]
-    assert events[-1]["event"] == "done"
-    with pytest.raises(RateLimited):  # the turn above was the last one allowed this hour
-        await anext(service.stream_turn(user, None, "one more"))
+    assert events[-1]["event"] == "done"  # $0.50 of $1.00 spent: allowed
+    spent_out = ChatService(repo, pipeline, daily_budget_usd=already + 0.5)
+    with pytest.raises(BudgetExceeded):
+        await anext(spent_out.stream_turn(user, None, "one more"))
     await repo.delete(user.user_id, events[0]["data"]["session_id"])
-    assert (
-        await repo.turns_last_hour(user.user_id) == already + 1
-    )  # deleting chats doesn't reset it
+    assert await repo.spend_last_day(user.user_id) >= already + 0.5  # chat deletion can't reset it
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("DELETE FROM app.turn_traces WHERE user_id = :u AND question = 'budget test'"),
+            {"u": user.user_id},
+        )
     await executor.dispose()
     await engine.dispose()
 

@@ -162,16 +162,17 @@ class ChatRepository:
             )
         return result.rowcount == 1
 
-    async def turns_last_hour(self, user_id: str) -> int:
+    async def spend_last_day(self, user_id: str) -> float:
+        """LLM spend in USD over the last 24 hours (calls of unknown cost count as 0)."""
         async with self._engine.connect() as conn:
-            count = await conn.scalar(
+            spent = await conn.scalar(
                 text(
-                    "SELECT count(*) FROM app.turn_traces "
-                    "WHERE user_id = :u AND created_at > now() - interval '1 hour'"
+                    "SELECT coalesce(sum(cost_usd), 0) FROM app.turn_traces "
+                    "WHERE user_id = :u AND created_at > now() - interval '1 day'"
                 ),
                 {"u": user_id},
             )
-        return int(count or 0)
+        return float(spent or 0)
 
     async def link_trace(self, trace_id: str, message_id: str) -> None:
         async with self._engine.begin() as conn:

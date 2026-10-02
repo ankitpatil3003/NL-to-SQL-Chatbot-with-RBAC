@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.auth.deps import CurrentUser
 from app.chat.repository import ChatRepository
-from app.chat.service import ChatService, RateLimited, SessionNotFound, TurnInProgress
+from app.chat.service import BudgetExceeded, ChatService, SessionNotFound, TurnInProgress
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -133,10 +133,10 @@ async def stream_turn(body: TurnIn, request: Request, user: CurrentUser) -> Stre
         first = await anext(events)  # surfaces ownership / concurrency errors as HTTP status codes
     except SessionNotFound:
         raise _not_found() from None
-    except RateLimited as exc:
+    except BudgetExceeded:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            f"You've reached the limit of {exc.limit} questions per hour. Please try again later.",
+            "You've reached today's usage limit. It frees up gradually over the next 24 hours.",
         ) from None
     except TurnInProgress:
         raise HTTPException(
