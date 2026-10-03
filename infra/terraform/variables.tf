@@ -86,7 +86,7 @@ variable "sql_candidates" {
 
 variable "chat_daily_budget_usd" {
   type    = number
-  default = 2 # user decision (v2): LLM spend per user per rolling 24h; replaced 10 questions/hour
+  default = 0.5 # user decision 2026-10-02: ~75 questions/user/day at $0.0066 (Bedrock chain)
 }
 
 variable "demo_password" {

@@ -464,7 +464,8 @@ and any GUC can be overwritten the same way. So:
 `SELECT *` cannot return pricing, whatever SQL the model writes.
 
 **Chat isolation:** every session and message query filters by the owner's `user_id`, and another
-user's chat returns 404, never 403. Spend is capped at $2 of LLM cost per user per rolling 24 hours,
+user's chat returns 404, never 403. Spend is capped at $0.50 of LLM cost per user per rolling 24 hours (about 75 questions at
+the production chain's $0.0066 each),
 summed from traces, so the cap survives restarts and chat deletion. Question count is not limited.
 
 **Evidence:**

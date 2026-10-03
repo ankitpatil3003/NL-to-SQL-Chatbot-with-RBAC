@@ -18,7 +18,7 @@ Browser ──HTTPS──▶ CloudFront (*.cloudfront.net) ──HTTP + secret h
 | State | S3 backend (versioned, encrypted, private) with S3-native locking | state holds generated secrets |
 | Streaming | CloudFront origin read timeout 60s + SSE heartbeat every 10s; `/api/*` uncompressed and uncached | long SQL steps can be silent for 25-35s |
 | Inference | OpenAI gpt-oss-120b on Amazon Bedrock (Converse API, `us-east-1`) for every step; then free Nemotron (OpenRouter); then the direct Anthropic API (Haiku 4.5 / Sonnet 5 for SQL) | billed to the AWS credits, no model-access request needed (Claude on Bedrock needs Anthropic's approval, slow for a new account); 40/40 on the golden set at 8.6 s p50 |
-| Spend cap | $2 of LLM spend per user per rolling 24h (from turn traces) | caps LLM spend on a public URL without limiting question count |
+| Spend cap | $0.50 of LLM spend per user per rolling 24h (~75 questions; from turn traces) | caps LLM spend on a public URL without limiting question count |
 
 ## Estimated cost (us-east-2, on-demand, per month)
 

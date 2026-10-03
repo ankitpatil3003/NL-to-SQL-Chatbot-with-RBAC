@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     public_url: str = "http://localhost:3000"
     # LLM spend per user over the last 24 hours (from turn traces); 0 disables. Replaced the
     # hourly question limit once accuracy-first turns (several candidates) made cost per turn vary.
-    chat_daily_budget_usd: float = 2.0
+    chat_daily_budget_usd: float = 0.5  # ~75 questions/day at the production chain's cost
 
     # --- Knowledge ---------------------------------------------------------------------------
     knowledge_docs_dir: Path = Field(default_factory=_repo_docs_dir)
