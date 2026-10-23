@@ -110,7 +110,7 @@ cmd_smoke() {
 }
 
 cmd_down() {
-  $TF main destroy -input=false -var "image_tag=unused"
+  $TF main destroy -input=false -auto-approve -var "image_tag=unused"
 }
 
 # Everything billable gone, including the Terraform state bucket (versioned, so every object version
