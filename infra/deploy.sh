@@ -7,6 +7,9 @@
 #   infra/deploy.sh migrate     # apply db/*.sql only (new app tables), no data reload
 #   infra/deploy.sh smoke       # check the public URL end to end
 #   infra/deploy.sh down        # destroy everything (the state bucket stays)
+#   infra/deploy.sh teardown    # down + delete the state bucket: $0/month (see LAST_DEPLOYMENT.md)
+#   infra/deploy.sh redeploy    # from nothing: bootstrap -> up -> LLM secret -> load -> smoke
+#                               # (needs OPENROUTER_API_KEY in the environment; never stored here)
 #
 # Images are tagged with the git commit (plus -dirty for uncommitted changes); ECR tags are
 # immutable, so an already-pushed tag is reused rather than overwritten.
@@ -110,4 +113,32 @@ cmd_down() {
   $TF main destroy -input=false -var "image_tag=unused"
 }
 
-"cmd_${1:?usage: deploy.sh bootstrap|up|load|migrate|smoke|down}"
+# Everything billable gone, including the Terraform state bucket (versioned, so every object version
+# and delete marker is removed first). A later `redeploy` recreates it all from the repo.
+cmd_teardown() {
+  cmd_down
+  local bucket; bucket="$($TF bootstrap output -raw state_bucket)"
+  echo "emptying state bucket $bucket (all versions)"
+  python - "$bucket" "$REGION" <<'PY'
+import sys, boto3
+bucket = boto3.resource("s3", region_name=sys.argv[2]).Bucket(sys.argv[1])
+bucket.object_versions.delete()
+PY
+  $TF bootstrap destroy -input=false -auto-approve
+  rm -rf infra/terraform/backend.hcl infra/terraform/.terraform
+  echo "teardown complete: no AWS resources left for this project"
+}
+
+# Rebuild from nothing (after `teardown`, or into a fresh account). ~25-30 min.
+cmd_redeploy() {
+  : "${OPENROUTER_API_KEY:?export OPENROUTER_API_KEY=sk-or-... (free Nemotron fallback) first}"
+  [ -f infra/terraform/backend.hcl ] || cmd_bootstrap
+  cmd_up
+  # Bedrock needs no key (task role). Production uses no direct Anthropic API model by design.
+  aws secretsmanager put-secret-value --region "$REGION" --secret-id "$(out llm_secret_name)" \
+    --secret-string "{\"OPENROUTER_API_KEY\":\"$OPENROUTER_API_KEY\",\"ANTHROPIC_API_KEY\":\"unused\"}" >/dev/null
+  cmd_load
+  cmd_smoke
+}
+
+"cmd_${1:?usage: deploy.sh bootstrap|up|load|migrate|smoke|down|teardown|redeploy}"

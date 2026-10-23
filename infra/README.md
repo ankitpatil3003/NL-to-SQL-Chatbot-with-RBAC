@@ -68,6 +68,8 @@ Then open the printed URL, or run the browser tests against it:
 infra/deploy.sh up               # builds images for the current commit, rolls both services
 infra/deploy.sh migrate          # after a release that adds db/*.sql (e.g. 50_memory.sql): no data reload
 infra/deploy.sh down             # destroys everything except the state bucket
+infra/deploy.sh teardown         # destroys everything incl. the state bucket: $0/month
+OPENROUTER_API_KEY=sk-or-... infra/deploy.sh redeploy   # rebuild from nothing (see LAST_DEPLOYMENT.md)
 ```
 
 A failed deploy rolls back automatically (ECS deployment circuit breaker). Logs:
